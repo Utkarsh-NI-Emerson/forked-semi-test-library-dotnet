@@ -21,11 +21,14 @@ jobs:
       # Step 2: Determine Work Item Type Based on GitHub Labels
       - name: Notify Developers via Microsoft Teams
         run: |
+          LABELS=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -r 'map(.name) | join(", ")')
+    
           MESSAGE=$(jq -n \
             --arg title "${{ github.event.issue.title }}" \
             --arg body "${{ github.event.issue.body }}" \
             --arg issue_url "${{ github.event.issue.html_url }}" \
-            --arg type "${{ env.work_item_type }}" \
+            --arg issue_number "${{ github.event.issue.number }}" \
+            --arg labels "$LABELS" \
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
@@ -35,12 +38,12 @@ jobs:
                 "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
-                  { "name": "Type", "value": $type },
-                  { "name": "GitHub Issue", "value": "\\([$title](\($issue_url))\\)" }
+                  { "name": "Issue Number", "value": "#\($issue_number)" },
+                  { "name": "Labels", "value": $labels },
+                  { "name": "GitHub Issue", "value": "[View Issue](" + $issue_url + ")" },
+                  { "name": "Description", "value": $body }
                 ],
                 "markdown": true
               }]
             }')
-
-          curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
 
