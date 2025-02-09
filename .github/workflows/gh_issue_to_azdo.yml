@@ -30,12 +30,15 @@ jobs:
       - name: Determine Work Item Type
         id: work_item_type
         run: |
+          LABELS="${{ env.labels }}"  # Load labels from environment
+
           TYPE="Customer Escalation"
           if echo "$LABELS" | grep -qi 'enhancement'; then 
             TYPE="User Story"
           elif echo "$LABELS" | grep -qi 'bug'; then
             TYPE="Bug"
           fi
+          
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
 
       # Step 4: Ensure jq is installed
