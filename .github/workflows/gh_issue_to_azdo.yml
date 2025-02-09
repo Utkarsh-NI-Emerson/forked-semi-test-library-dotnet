@@ -26,9 +26,9 @@ jobs:
           LABELS="${{ toJson(github.event.issue.labels) }}"
           TYPE="Customer Escalation"
 
-          if echo "$LABELS" | grep -q '"name": "enhancement"'; then 
+          if echo "$LABELS" | grep -q '"name": "Enhancement"'; then 
             TYPE="User Story"
-          elif echo "$LABELS" | grep -q '"name": "bug"'; then
+          elif echo "$LABELS" | grep -q '"name": "Bug"'; then
             TYPE="Bug"
           fi
     
