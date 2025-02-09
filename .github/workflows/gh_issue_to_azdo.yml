@@ -22,10 +22,15 @@ jobs:
       - name: Extract Labels
         id: labels
         run: |
-          LABELS_JSON="${{ toJson(github.event.issue.labels) }}"
+          LABELS_JSON='${{ toJson(github.event.issue.labels) }}'
           LABELS=$(echo "$LABELS_JSON" | jq -r 'map(.name) | join(", ")')
-          echo "labels=$LABELS" >> $GITHUB_ENV
-
+          echo "labels=\"$LABELS\"" >> $GITHUB_ENV
+      
+      # Debug label extaction 
+      - name: Debug Labels Extraction
+        run: |
+          echo '${{ toJson(github.event.issue.labels) }}' | jq .
+            
       # Step 3: Determine Work Item Type Based on Labels.
       - name: Determine Work Item Type
         id: work_item_type
