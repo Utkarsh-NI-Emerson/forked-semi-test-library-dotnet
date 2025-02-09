@@ -38,12 +38,15 @@ jobs:
                 "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
-                  { "name": "Issue Number", "value": "#\($issue_number)" },
+                  { "name": "Issue Number", "value": ("#" + $issue_number) },
                   { "name": "Labels", "value": $labels },
-                  { "name": "GitHub Issue", "value": "[View Issue](" + $issue_url + ")" },
+                  { "name": "GitHub Issue", "value": "[View Issue] \($issue_url)" },
                   { "name": "Description", "value": $body }
                 ],
                 "markdown": true
               }]
             }')
+    
+          curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
+    
 
