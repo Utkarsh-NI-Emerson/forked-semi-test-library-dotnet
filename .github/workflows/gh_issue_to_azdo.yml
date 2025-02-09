@@ -9,36 +9,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Extract Issue Details
+      # Step 1: Extract issue details
       - name: Extract Issue Details
         id: issue
         run: |
-          echo "title=$(echo '${{ github.event.issue.title }}' | jq -Rr @json)" >> $GITHUB_ENV
-          echo "body=$(echo '${{ github.event.issue.body }}' | jq -Rr @json)" >> $GITHUB_ENV
+          echo "title=${{ github.event.issue.title }}" >> $GITHUB_ENV
+          echo "body=${{ github.event.issue.body }}" >> $GITHUB_ENV
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
-
-
       # Step 2: Determine Work Item Type Based on GitHub Labels
-      - name: Determine Work Item Type
-        id: work_item_type
-        run: |
-          LABELS="${{ toJson(github.event.issue.labels) }}"
-          TYPE="Customer Escalation"
-
-          if echo "$LABELS" | grep -q '"name": "Enhancement"'; then 
-            TYPE="User Story"
-          elif echo "$LABELS" | grep -q '"name": "Bug"'; then
-            TYPE="Bug"
-          fi
-    
-          echo "work_item_type=$TYPE" >> $GITHUB_ENV
-
-      # Step 3: Ensure jq is installed
-      - name: Install jq (if missing)
-        run: sudo apt-get install jq -y
-
-      # Step 4: Notify Developers via Microsoft Teams
       - name: Notify Developers via Microsoft Teams
         run: |
           LABELS=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -r 'map(.name) | join(", ")')
@@ -58,13 +37,12 @@ jobs:
                 "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
-                  { "name": "Issue Number", "value": "#\($issue_number)" },
+                  { "name": "Issue Number", "value": ("#" + $issue_number) },
                   { "name": "Labels", "value": $labels },
-                  { "name": "GitHub Issue", "value": "(" + $issue_url + ")" }
+                  { "name": "GitHub Issue", "value": "\($issue_url)" }
                 ],
                 "markdown": true
               }]
             }')
     
           curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
-    
