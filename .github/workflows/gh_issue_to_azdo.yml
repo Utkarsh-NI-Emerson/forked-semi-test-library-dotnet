@@ -22,13 +22,13 @@ jobs:
       - name: Notify Developers via Microsoft Teams
         run: |
           LABELS=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -r 'map(.name) | join(", ")')
-    
+
           MESSAGE=$(jq -n \
             --arg title "${{ github.event.issue.title }}" \
-            --arg body "${{ github.event.issue.body }}" \
-            --arg issue_url "${{ github.event.issue.html_url }}" \
-            --arg issue_number "${{ github.event.issue.number }}" \
+            --arg issue_number "#${{ github.event.issue.number }}" \
             --arg labels "$LABELS" \
+            --arg issue_url "${{ github.event.issue.html_url }}" \
+            --arg body "${{ github.event.issue.body }}" \
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
@@ -38,15 +38,16 @@ jobs:
                 "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
-                  { "name": "Issue Number", "value": ("#" + $issue_number) },
+                  { "name": "Issue Number", "value": $issue_number },
                   { "name": "Labels", "value": $labels },
-                  { "name": "GitHub Issue", "value": "[View Issue] \($issue_url)" },
+                  { "name": "GitHub Issue", "value": "<a href=\"\($issue_url)\">View Issue</a>" },
                   { "name": "Description", "value": $body }
                 ],
                 "markdown": true
               }]
             }')
-    
+
           curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
+
     
 
