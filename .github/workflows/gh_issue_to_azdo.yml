@@ -9,17 +9,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Extract details of the issue
-      - name: Extract issue details
+      # Step 1: Extract issue details
+      - name: Extract Issue Details
         id: issue
         run: |
           echo "title=${{ github.event.issue.title }}" >> $GITHUB_ENV
           echo "body=${{ github.event.issue.body }}" >> $GITHUB_ENV
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
-      
-      # Step 2: Determine Work Item type that should be created in AzDo based on tag on the Github issue
-      # Check if casing in labels is correct.
+
+      # Step 2: Determine Work Item Type Based on GitHub Labels
       - name: Determine Work Item Type
         id: work_item_type
         run: |
@@ -34,9 +33,20 @@ jobs:
     
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
 
-      # Step 3: Notify Developers via Microsoft Teams **BEFORE** creating the work item
+      # Step 3: Ensure jq is installed
+      - name: Install jq (if missing)
+        run: sudo apt-get install jq -y
+
+      # Step 4: Notify Developers via Microsoft Teams
       - name: Notify Developers via Microsoft Teams
         run: |
+          # Validate webhook URL
+          if [[ -z "${{ secrets.TEAMS_WEBHOOK_URL }}" ]]; then
+            echo "Error: TEAMS_WEBHOOK_URL is not set. Exiting."
+            exit 1
+          fi
+
+          # Construct JSON message payload
           MESSAGE=$(jq -n \
             --arg title "${{ github.event.issue.title }}" \
             --arg body "${{ github.event.issue.body }}" \
@@ -58,4 +68,9 @@ jobs:
               }]
             }')
 
-          curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
+          # Debugging: Print the generated message payload
+          echo "Generated Message Payload:"
+          echo "$MESSAGE"
+
+          # Send message to Microsoft Teams (with verbose logging)
+          curl -v -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
