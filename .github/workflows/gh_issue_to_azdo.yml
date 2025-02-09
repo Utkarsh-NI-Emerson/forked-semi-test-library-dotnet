@@ -13,10 +13,11 @@ jobs:
       - name: Extract Issue Details
         id: issue
         run: |
-          echo "title=$(echo '${{ github.event.issue.title }}' | jq -Rr @sh)" >> $GITHUB_ENV
-          echo "body=$(echo '${{ github.event.issue.body }}' | jq -Rr @sh)" >> $GITHUB_ENV
+          echo "title=$(echo '${{ github.event.issue.title }}' | jq -r @json)" >> $GITHUB_ENV
+          echo "body=$(echo '${{ github.event.issue.body }}' | jq -r @json)" >> $GITHUB_ENV
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
+    
 
       # Step 2: Determine Work Item Type Based on GitHub Labels
       - name: Determine Work Item Type
