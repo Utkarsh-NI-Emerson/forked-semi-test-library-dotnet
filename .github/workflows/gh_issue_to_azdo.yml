@@ -22,16 +22,19 @@ jobs:
       - name: Determine Work Item Type
         id: work_item_type
         run: |
-          LABELS="${{ toJson(github.event.issue.labels) }}"
+          LABELS=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -r '.[].name')
           TYPE="Customer Escalation"
-
-          if echo "$LABELS" | grep -q '"name": "Enhancement"'; then 
+    
+          echo "GitHub Issue Labels: $LABELS" # Debugging Step
+    
+          if echo "$LABELS" | grep -qi "Enhancement"; then 
             TYPE="User Story"
-          elif echo "$LABELS" | grep -q '"name": "Bug"'; then
+          elif echo "$LABELS" | grep -qi "Bug"; then
             TYPE="Bug"
           fi
     
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
+    
 
       # Step 3: Ensure jq is installed
       - name: Install jq (if missing)
