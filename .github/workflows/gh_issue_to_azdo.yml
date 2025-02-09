@@ -19,37 +19,8 @@ jobs:
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
 
       # Step 2: Determine Work Item Type Based on GitHub Labels
-      - name: Determine Work Item Type
-        id: work_item_type
-        run: |
-          LABELS=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -r '.[].name')
-          TYPE="Customer Escalation"
-    
-          echo "GitHub Issue Labels: $LABELS" # Debugging Step
-    
-          if echo "$LABELS" | grep -qi "Enhancement"; then 
-            TYPE="User Story"
-          elif echo "$LABELS" | grep -qi "Bug"; then
-            TYPE="Bug"
-          fi
-    
-          echo "work_item_type=$TYPE" >> $GITHUB_ENV
-    
-
-      # Step 3: Ensure jq is installed
-      - name: Install jq (if missing)
-        run: sudo apt-get install jq -y
-
-      # Step 4: Notify Developers via Microsoft Teams
       - name: Notify Developers via Microsoft Teams
         run: |
-          # Validate webhook URL
-          if [[ -z "${{ secrets.TEAMS_WEBHOOK_URL }}" ]]; then
-            echo "Error: TEAMS_WEBHOOK_URL is not set. Exiting."
-            exit 1
-          fi
-
-          # Construct JSON message payload
           MESSAGE=$(jq -n \
             --arg title "${{ github.event.issue.title }}" \
             --arg body "${{ github.event.issue.body }}" \
@@ -65,15 +36,11 @@ jobs:
                 "facts": [
                   { "name": "Title", "value": $title },
                   { "name": "Type", "value": $type },
-                  { "name": "GitHub Issue", "value": "[" + $title + "](" + $issue_url + ")" }
+                  { "name": "GitHub Issue", "value": "\\([$title](\($issue_url))\\)" }
                 ],
                 "markdown": true
               }]
             }')
 
-          # Debugging: Print the generated message payload
-          echo "Generated Message Payload:"
-          echo "$MESSAGE"
+          curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
 
-          # Send message to Microsoft Teams (with verbose logging)
-          curl -v -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
