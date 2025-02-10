@@ -21,18 +21,7 @@ jobs:
           echo "body=$(echo '${{ github.event.issue.body }}' | jq -Rr @json)" >> $GITHUB_ENV
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
-
-      # Step 3: Extract Labels (Fixed issue with incorrect assignment)
-      - name: Extract Labels
-        id: labels
-        run: |
-          LABELS_JSON=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -c '.')
-          if [[ "$LABELS_JSON" == "[]" ]]; then
-            echo "labels=" >> $GITHUB_ENV
-          else
-            LABELS=$(echo "$LABELS_JSON" | jq -r 'map(.name) | join(", ")')
-            echo "labels=$LABELS" >> $GITHUB_ENV
-          fi
+          echo "labels=$(echo '${{ github.event.issue.labels }}' | jq -Rr @json)" >> $GITHUB_ENV
 
       # Step 4: Determine Work Item Type Based on Labels
       - name: Determine Work Item Type
@@ -40,6 +29,7 @@ jobs:
         run: |
           LABELS="${{ env.labels }}"  # Load labels from environment
           TYPE="Customer Escalation"
+          
           if echo "$LABELS" | grep -qi 'enhancement'; then 
             TYPE="User Story"
           elif echo "$LABELS" | grep -qi 'bug'; then
