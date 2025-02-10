@@ -47,7 +47,8 @@ jobs:
             --arg issue_url "$issue_url" \
             --arg issue_number "$issue_number" \
             --arg type "$work_item_type" \
-            --arg mention "<at>everyone</at>" \
+            --arg mentionText "<at>@everyone</at>" \
+            --arg mentionId "29:1Lkg0a7..." \ # Replace with the actual ID for @everyone
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
@@ -68,7 +69,12 @@ jobs:
                 "name": "View Issue",
                 "targets": [{ "os": "default", "uri": $issue_url }]
               }],
-              "text": $mention
+              "text": $mentionText,
+              "mentions": [{
+                "type": "Mention",
+                "text": $mentionText,
+                "id": $mentionId
+              }]
             }')
 
           curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
