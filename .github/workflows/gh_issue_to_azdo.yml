@@ -9,7 +9,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Extract issue details safely and store them in environment variables.
+      # Step 4: Ensure jq is installed
+      - name: Install jq (if missing)
+        run: sudo apt-get install jq -y
+
+      # Step 1: Extract issue details safely
       - name: Extract Issue Details
         id: issue
         run: |
@@ -18,41 +22,38 @@ jobs:
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
 
-      # Step 4: Ensure jq is installed (if missing).
-      - name: Install jq
-        run: sudo apt-get install jq -y    
-
-      # Step 2: Extract Labels from the Issue.
+      # Step 2: Extract Labels (Fixed issue with incorrect assignment)
       - name: Extract Labels
         id: labels
         run: |
           LABELS_JSON='${{ toJson(github.event.issue.labels) }}'
           LABELS=$(echo "$LABELS_JSON" | jq -r 'map(.name) | join(", ")')
-          echo "labels=\"$LABELS\"" >> $GITHUB_ENV
-            
-      # Step 3: Determine Work Item Type Based on Labels.
+          echo "labels=$LABELS" >> $GITHUB_ENV
+
+      # Step 3: Determine Work Item Type Based on Labels
       - name: Determine Work Item Type
         id: work_item_type
         run: |
-          LABELS_VALUE="${{ env.labels }}"
+          LABELS="${{ env.labels }}"  # Load labels from environment
           TYPE="Customer Escalation"
-
-          echo "$LABELS_VALUE" | tr ',' '\n' | grep -qi '^enhancement$' && TYPE="User Story"
-          echo "$LABELS_VALUE" | tr ',' '\n' | grep -qi '^bug$' && TYPE="Bug"
-    
+          if echo "$LABELS" | grep -qi 'enhancement'; then 
+            TYPE="User Story"
+          elif echo "$LABELS" | grep -qi 'bug'; then
+            TYPE="Bug"
+          fi
+          
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
-    
 
-      # Step 5: Notify Developers via Microsoft Teams.
+      # Step 5: Notify Developers via Microsoft Teams (Fixed JSON format errors)
       - name: Notify Developers via Microsoft Teams
         run: |
           MESSAGE=$(jq -n \
-            --arg title "${{ env.title }}" \
-            --arg body "${{ env.body }}" \
-            --arg issue_url "${{ env.issue_url }}" \
-            --arg issue_number "#${{ env.issue_number }}" \
-            --arg labels "${{ env.labels }}" \
-            --arg type "${{ env.work_item_type }}" \
+            --arg title "$title" \
+            --arg body "$body" \
+            --arg issue_url "$issue_url" \
+            --arg issue_number "$issue_number" \
+            --arg labels "$labels" \
+            --arg type "$work_item_type" \
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
@@ -62,7 +63,7 @@ jobs:
                 "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
-                  { "name": "Issue Number", "value": $issue_number },
+                  { "name": "Issue Number", "value": ("#" + $issue_number) },
                   { "name": "Labels", "value": $labels },
                   { "name": "GitHub Issue", "value": $issue_url },
                   { "name": "Description", "value": $body }
