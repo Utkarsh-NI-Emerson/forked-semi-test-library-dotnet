@@ -9,11 +9,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 4: Ensure jq is installed
+      # Step 1 Ensure jq is installed
       - name: Install jq (if missing)
         run: sudo apt-get install jq -y
 
-      # Step 1: Extract issue details safely
+      # Step 2: Extract issue details safely
       - name: Extract Issue Details
         id: issue
         run: |
@@ -22,15 +22,19 @@ jobs:
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
 
-      # Step 2: Extract Labels (Fixed issue with incorrect assignment)
+      # Step 3: Extract Labels (Fixed issue with incorrect assignment)
       - name: Extract Labels
         id: labels
         run: |
-          LABELS_JSON='${{ toJson(github.event.issue.labels) }}'
-          LABELS=$(echo "$LABELS_JSON" | jq -r 'map(.name) | join(", ")')
-          echo "labels=$LABELS" >> $GITHUB_ENV
+          LABELS_JSON=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -c '.')
+          if [[ "$LABELS_JSON" == "[]" ]]; then
+            echo "labels=" >> $GITHUB_ENV
+          else
+            LABELS=$(echo "$LABELS_JSON" | jq -r 'map(.name) | join(", ")')
+            echo "labels=$LABELS" >> $GITHUB_ENV
+          fi
 
-      # Step 3: Determine Work Item Type Based on Labels
+      # Step 4: Determine Work Item Type Based on Labels
       - name: Determine Work Item Type
         id: work_item_type
         run: |
