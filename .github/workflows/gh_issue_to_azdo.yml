@@ -65,7 +65,6 @@ jobs:
                   { "name": "Title", "value": $title },
                   { "name": "Issue Number", "value": ("#" + $issue_number) },
                   { "name": "Work Item Type", "value": $type },
-                  { "name": "Labels", "value": $labels },
                   { "name": "GitHub Issue", "value": $issue_url },
                   { "name": "Description", "value": $body }
                 ],
