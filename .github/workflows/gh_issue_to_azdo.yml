@@ -22,7 +22,7 @@ jobs:
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
           echo "labels=$(echo '${{ github.event.issue.labels }}' | jq -Rr @json)" >> $GITHUB_ENV
-          
+      
       # Step 3: Determine Work Item Type Based on Labels
       - name: Determine Work Item Type
         id: work_item_type
@@ -37,7 +37,7 @@ jobs:
           fi
           
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
-
+          
       # Step 4: Notify Developers via Microsoft Teams (Fixed JSON format errors)
       - name: Notify Developers via Microsoft Teams
         run: |
@@ -46,6 +46,7 @@ jobs:
             --arg body "$body" \
             --arg issue_url "$issue_url" \
             --arg issue_number "$issue_number" \
+            --arg labels "$labels" \
             --arg type "$work_item_type" \
             '{
               "@type": "MessageCard",
@@ -53,10 +54,11 @@ jobs:
               "themeColor": "0076D7",
               "summary": "New GitHub Issue Assigned",
               "sections": [{
-                "activityTitle": "**@everyone New GitHub Issue Created**",
+                "activityTitle": "**New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
                   { "name": "Issue Number", "value": ("#" + $issue_number) },
+                  { "name": "Labels", "value": $labels },
                   { "name": "GitHub Issue", "value": $issue_url },
                   { "name": "Description", "value": $body }
                 ],
