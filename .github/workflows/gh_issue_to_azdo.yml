@@ -1,79 +1,39 @@
-name: Create AzDo Work Item on New GitHub Issue
+name: Issue Created Handler
 
 on:
   issues:
     types: [opened]
 
 jobs:
-  create_azdo_work_item:
+  handle-new-issue:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Install jq
-        run: sudo apt-get install jq -y
-
-      - name: Extract Issue Details
-        id: issue
+      - name: Notify NI Developers on Teams
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
-          # Handle title with proper escaping
-          echo "title=$(jq -n --arg v "${{ github.event.issue.title }}" '$v')" >> $GITHUB_ENV
-          
-          # Handle multiline body with proper escaping
-          echo "body=$(jq -n --arg v "${{ github.event.issue.body }}" '$v')" >> $GITHUB_ENV
-          
-          # Handle simple values
-          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
-          echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
-          
-          # Handle labels array properly
-          echo "labels=$(echo '${{ toJSON(github.event.issue.labels) }}' | jq -c '[.[].name]')" >> $GITHUB_ENV
-      
-      - name: Determine Work Item Type
-        id: work_item_type
-        run: |
-          # Parse labels safely
-          LABELS=$(echo "${{ env.labels }}" | jq -r '.[]?' 2>/dev/null || echo "")
-          TYPE="Customer Escalation"  # Default type
-          
-          # Case-insensitive label matching
-          if echo "$LABELS" | grep -qi "\\bbug\\b"; then
-            TYPE="Bug"
-          elif echo "$LABELS" | grep -qi "\\benhancement\\b"; then
-            TYPE="User Story"
-          fi
-          
-          echo "Selected type: $TYPE" # Debug output
-          echo "work_item_type=$TYPE" >> $GITHUB_ENV
-     
-      - name: Notify Developers via Microsoft Teams
-        run: |
-          MESSAGE=$(jq -n \
-            --arg title "${{ env.title }}" \
-            --arg body "${{ env.body }}" \
-            --arg issue_url "${{ env.issue_url }}" \
-            --arg issue_number "${{ env.issue_number }}" \
-            --arg labels "${{ env.labels }}" \
-            --arg type "${{ env.work_item_type }}" \
-            '{
-              "@type": "MessageCard",
-              "@context": "https://schema.org/extensions",
-              "themeColor": "0076D7",
-              "summary": "New GitHub Issue Assigned",
-              "sections": [{
-                "activityTitle": "**New GitHub Issue Created**",
+          echo "Notifying NI developers on Teams about the new issue..."
+          # Build the JSON payload for Teams with the issue details in a shell variable.
+          teams_payload='{
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": "0076D7",
+            "summary": "New GitHub Issue Created",
+            "sections": [
+              {
+                "activityTitle": "New GitHub Issue: **'"$ISSUE_TITLE"'**",
                 "facts": [
-                  { "name": "Title", "value": $title },
-                  { "name": "Issue Number", "value": ("#" + $issue_number) },
-                  { "name": "Work Item Type", "value": $type },
-                  { "name": "GitHub Issue", "value": $issue_url },
-                  { "name": "Description", "value": $body }
+                  { "name": "Title", "value": "'"$ISSUE_TITLE"'" },
+                  { "name": "Description", "value": "'"$ISSUE_BODY"'" },
+                  { "name": "URL", "value": "[View Issue]('"$ISSUE_URL"')" }
                 ],
                 "markdown": true
-              }]
-            }')
-          
-          # Add error handling for the curl command
-          if ! curl -H "Content-Type: application/json" -d "$MESSAGE" "${{ secrets.TEAMS_WEBHOOK_URL }}"; then
-            echo "Failed to send Teams notification"
-            exit 1
-          fi
+              }
+            ]
+          }'
+          echo "$teams_payload" > teams_payload.json
+          cat teams_payload.json
+          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
