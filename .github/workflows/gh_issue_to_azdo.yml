@@ -15,41 +15,45 @@ jobs:
       - name: Extract Issue Details
         id: issue
         run: |
-          # Properly escape and handle JSON values
-          echo "title=$(echo '${{ github.event.issue.title }}' | jq -r 'tojson')" >> $GITHUB_ENV
-          echo "body=$(echo '${{ github.event.issue.body }}' | jq -r 'tojson')" >> $GITHUB_ENV
+          # Handle title with proper escaping
+          echo "title=$(jq -n --arg v "${{ github.event.issue.title }}" '$v')" >> $GITHUB_ENV
+          
+          # Handle multiline body with proper escaping
+          echo "body=$(jq -n --arg v "${{ github.event.issue.body }}" '$v')" >> $GITHUB_ENV
+          
+          # Handle simple values
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
-          # Handle labels more carefully
-          echo "labels=$(echo '${{ toJson(github.event.issue.labels) }}' | jq -c '[.[].name]')" >> $GITHUB_ENV
+          
+          # Handle labels array properly
+          echo "labels=$(echo '${{ toJSON(github.event.issue.labels) }}' | jq -c '[.[].name]')" >> $GITHUB_ENV
       
       - name: Determine Work Item Type
         id: work_item_type
         run: |
-          # Parse labels properly and handle null cases
-          LABELS=$(echo '${{ env.labels }}' | jq -r '.[]?' 2>/dev/null || echo "")
+          # Parse labels safely
+          LABELS=$(echo "${{ env.labels }}" | jq -r '.[]?' 2>/dev/null || echo "")
           TYPE="Customer Escalation"  # Default type
           
-          # Case-insensitive label matching with proper string handling
+          # Case-insensitive label matching
           if echo "$LABELS" | grep -qi "\\bbug\\b"; then
             TYPE="Bug"
           elif echo "$LABELS" | grep -qi "\\benhancement\\b"; then
             TYPE="User Story"
           fi
           
-          echo "work_item_type=$TYPE" >> $GITHUB_ENV
           echo "Selected type: $TYPE" # Debug output
+          echo "work_item_type=$TYPE" >> $GITHUB_ENV
      
       - name: Notify Developers via Microsoft Teams
         run: |
-          # Ensure all variables are properly quoted and escaped
           MESSAGE=$(jq -n \
-            --arg title "${title:-Untitled}" \
-            --arg body "${body:-No description provided}" \
-            --arg issue_url "$issue_url" \
-            --arg issue_number "$issue_number" \
-            --arg labels "${labels:-[]}" \
-            --arg type "$work_item_type" \
+            --arg title "${{ env.title }}" \
+            --arg body "${{ env.body }}" \
+            --arg issue_url "${{ env.issue_url }}" \
+            --arg issue_number "${{ env.issue_number }}" \
+            --arg labels "${{ env.labels }}" \
+            --arg type "${{ env.work_item_type }}" \
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
