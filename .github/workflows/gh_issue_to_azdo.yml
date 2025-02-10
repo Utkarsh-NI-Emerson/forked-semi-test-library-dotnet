@@ -70,25 +70,31 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document with the issue title and URL.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
             --arg description "GitHub Issue URL: $ISSUE_URL" \
-            '[{"op": "add", "path": "/fields/System.Title", "value": $title},
-              {"op": "add", "path": "/fields/System.Description", "value": $description}]')
+            --arg bu "Your BU Value" \
+            --arg requestor "Your Requestor Value" \
+            --arg severity "Low" \
+            '[
+              {"op": "add", "path": "/fields/System.Title", "value": $title},
+              {"op": "add", "path": "/fields/System.Description", "value": $description},
+              {"op": "add", "path": "/fields/Custom.BUAffinity", "value": $bu},
+              {"op": "add", "path": "/fields/Custom.Requestor", "value": $requestor},
+              {"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": $severity}
+            ]')
           echo "$PATCH_DOC" > patch.json
-
-          # Construct the Azure DevOps API URL using the determined work item type.
-          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
+    
+          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$Customer%20Escalation?api-version=6.0"
           echo "Work Item URL: $WORK_ITEM_URL"
-
-          # Call the Azure DevOps API to create the work item.
+    
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
             "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
+
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
