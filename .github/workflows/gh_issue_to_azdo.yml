@@ -22,12 +22,12 @@ jobs:
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_ENV
           echo "issue_url=${{ github.event.issue.html_url }}" >> $GITHUB_ENV
           echo "labels=$(echo '${{ github.event.issue.labels }}' | jq -Rr @json)" >> $GITHUB_ENV
-
+          
       # Step 3: Determine Work Item Type Based on Labels
       - name: Determine Work Item Type
         id: work_item_type
         run: |
-          LABELS="${{ env.labels }}"
+          LABELS="${{ env.labels }}"  # Load labels from environment
           TYPE="Customer Escalation"
           
           if echo "$LABELS" | grep -qi 'enhancement'; then 
@@ -38,7 +38,7 @@ jobs:
           
           echo "work_item_type=$TYPE" >> $GITHUB_ENV
 
-      # Step 4: Notify Developers via Microsoft Teams
+      # Step 4: Notify Developers via Microsoft Teams (Fixed JSON format errors)
       - name: Notify Developers via Microsoft Teams
         run: |
           MESSAGE=$(jq -n \
@@ -47,15 +47,13 @@ jobs:
             --arg issue_url "$issue_url" \
             --arg issue_number "$issue_number" \
             --arg type "$work_item_type" \
-            --arg mentionText "<at>@everyone</at>" \
-            --arg mentionId "29:1Lkg0a7..." \ # Replace with the actual ID for @everyone
             '{
               "@type": "MessageCard",
               "@context": "https://schema.org/extensions",
               "themeColor": "0076D7",
               "summary": "New GitHub Issue Assigned",
               "sections": [{
-                "activityTitle": "**New GitHub Issue Created**",
+                "activityTitle": "**@everyone New GitHub Issue Created**",
                 "facts": [
                   { "name": "Title", "value": $title },
                   { "name": "Issue Number", "value": ("#" + $issue_number) },
@@ -63,18 +61,7 @@ jobs:
                   { "name": "Description", "value": $body }
                 ],
                 "markdown": true
-              }],
-              "potentialAction": [{
-                "@type": "OpenUri",
-                "name": "View Issue",
-                "targets": [{ "os": "default", "uri": $issue_url }]
-              }],
-              "text": $mentionText,
-              "mentions": [{
-                "type": "Mention",
-                "text": $mentionText,
-                "id": $mentionId
               }]
             }')
-
+          
           curl -H "Content-Type: application/json" -d "$MESSAGE" ${{ secrets.TEAMS_WEBHOOK_URL }}
