@@ -8,7 +8,7 @@ jobs:
   create_work_item:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Determine the work item type based on issue labels.
+      # Step 1: Determine the work item type based on the issue labels.
       - name: Determine Work Item Type
         id: determine_type
         uses: actions/github-script@v6
@@ -39,25 +39,27 @@ jobs:
           echo "Creating work item of type: ${WORK_ITEM_TYPE}"
           # URL-encode work item type (replace spaces with %20)
           workItemTypeEncoded=$(echo "$WORK_ITEM_TYPE" | sed 's/ /%20/g')
+          # NOTE: The AzDo API expects a '$' before the work item type.
           URL="https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/wit/workitems/\$$workItemTypeEncoded?api-version=6.0"
           echo "AzDo URL: $URL"
           
-          # Build the JSON Patch payload using jq (avoids heredoc)
+          # Build the JSON Patch payload using jq (avoiding heredoc)
           PAYLOAD=$(jq -n \
             --arg title "$ISSUE_TITLE" \
             --arg body "$ISSUE_BODY" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title}, {"op": "add", "path": "/fields/System.Description", "value": $body}]')
           echo "Payload: $PAYLOAD"
           
-          # Call the AzDo API using curl
+          # Call the AzDo API using curl with the PATCH method.
           RESPONSE=$(curl -sS -u ":$AZDO_PAT" \
-            -X POST \
+            -X PATCH \
             -H "Content-Type: application/json-patch+json" \
             -d "$PAYLOAD" \
             "$URL")
           
           echo "AzDo Response: $RESPONSE"
-          echo "::set-output name=azdo_response::$RESPONSE"
+          # Instead of using set-output, append the output to the GITHUB_OUTPUT file.
+          echo "azdo_response=$RESPONSE" >> "$GITHUB_OUTPUT"
 
       # Step 3: Notify NI Developers on Teams about the new GitHub issue.
       - name: Notify NI Developers on Teams
@@ -68,7 +70,7 @@ jobs:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
         run: |
           echo "Notifying NI developers on Teams about the new issue..."
-          # Build the JSON payload for Teams with the issue details
+          # Build the JSON payload for Teams with the issue details.
           teams_payload='{
             "@type": "MessageCard",
             "@context": "https://schema.org/extensions",
