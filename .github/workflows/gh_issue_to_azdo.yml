@@ -8,9 +8,60 @@ jobs:
   handle-new-issue:
     runs-on: ubuntu-latest
     steps:
-      # 1. Create the work item in Azure DevOps
+      - name: Notify NI Developers on Teams
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          echo "Notifying NI developers on Teams about the new issue..."
+          # Build the JSON payload for Teams with the issue details in a shell variable.
+          teams_payload='{
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": "0076D7",
+            "summary": "New GitHub Issue Created",
+            "sections": [
+              {
+                "activityTitle": "New GitHub Issue: **'"$ISSUE_TITLE"'**",
+                "facts": [
+                  { "name": "Title", "value": "'"$ISSUE_TITLE"'" },
+                  { "name": "Description", "value": "'"$ISSUE_BODY"'" },
+                  { "name": "URL", "value": "[View Issue]('"$ISSUE_URL"')" }
+                ],
+                "markdown": true
+              }
+            ]
+          }'
+          echo "$teams_payload" > teams_payload.json
+          cat teams_payload.json
+          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+      
+      - name: Determine Work Item Type
+        id: determine-work-item-type
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // Retrieve all label names and normalize them to lower case for case-insensitive matching.
+            const labels = context.payload.issue.labels.map(label => label.name.toLowerCase());
+            console.log("Normalized issue labels: " + labels);
+            let workItemType = "";
+            // Use precedence: if "bug" exists, choose Bug; else if "enhancement" exists, choose User Story; otherwise, default to Customer Escalation.
+            if (labels.includes("bug")) {
+              workItemType = "Bug";
+            } else if (labels.includes("enhancement")) {
+              workItemType = "User Story";
+            } else {
+              workItemType = "Customer Escalation";
+            }
+            // URL-encode the work item type (e.g., "User Story" becomes "User%20Story")
+            const encodedType = encodeURIComponent(workItemType);
+            console.log("Work item type (encoded): " + encodedType);
+            return encodedType;
+          result-encoding: string
+
       - name: Create work item in Azure DevOps
-        id: create_work_item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
@@ -19,79 +70,33 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          
-          # Build the JSON patch document with the issue title and URL.
+          # Build a JSON patch document with the issue title and URL.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
             --arg description "GitHub Issue URL: $ISSUE_URL" \
-            '[
-              {"op": "add", "path": "/fields/System.Title", "value": $title},
-              {"op": "add", "path": "/fields/System.Description", "value": $description}
-            ]')
+            '[{"op": "add", "path": "/fields/System.Title", "value": $title},
+              {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
-          
-          # Define the desired work item type.
-          WORK_ITEM_TYPE="Customer Escalation"
-          
-          # URL-encode the work item type (replace spaces with %20).
-          ENCODED_WORK_ITEM_TYPE=$(echo "$WORK_ITEM_TYPE" | sed 's/ /%20/g')
-          
-          # Construct the Azure DevOps API URL.
-          # The backslash before $ ensures that a literal $ appears as required by the API.
-          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$$ENCODED_WORK_ITEM_TYPE?api-version=6.0"
-          echo "Work Item API URL: $WORK_ITEM_API_URL"
-          
+          # Construct the Azure DevOps API URL using the determined work item type.
+          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
+          echo "Work Item URL: $WORK_ITEM_URL"
           # Call the Azure DevOps API to create the work item.
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
-            "$WORK_ITEM_API_URL")
+            "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
           
-          # Extract the work item ID from the response using jq.
-          WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
-          if [ "$WORK_ITEM_ID" = "null" ]; then
-            echo "Error: Work item creation failed"
-            exit 1
-          fi
-          echo "Created Work Item ID: $WORK_ITEM_ID"
-          
-          # Construct the direct URL to view the work item.
-          WORK_ITEM_LINK="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
-          echo "Work Item Link: $WORK_ITEM_LINK"
-          
-          # Set outputs for later steps.
-          echo "::set-output name=work_item_link::$WORK_ITEM_LINK"
-          echo "::set-output name=work_item_type::$WORK_ITEM_TYPE"
-
-      # 2. Notify NI Developers on Teams with the work item link and type
-      - name: Notify NI Developers on Teams
-        env:
-          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          WORK_ITEM_LINK: ${{ steps.create_work_item.outputs.work_item_link }}
-          WORK_ITEM_TYPE: ${{ steps.create_work_item.outputs.work_item_type }}
-        run: |
-          echo "Notifying NI developers on Teams about the new work item..."
-          # Use a heredoc to build the JSON payload; note that the closing EOF must not be indented.
-          cat <<-EOF > teams_payload.json
-          {
-            "@type": "MessageCard",
-            "@context": "https://schema.org/extensions",
-            "themeColor": "0076D7",
-            "summary": "New Work Item Created",
-            "sections": [
-              {
-                "activityTitle": "A new work item for GitHub Issue: **$ISSUE_TITLE** has been created.",
-                "facts": [
-                  { "name": "Work Item Type", "value": "$WORK_ITEM_TYPE" },
-                  { "name": "Link", "value": "[View Work Item]($WORK_ITEM_LINK)" }
-                ],
-                "markdown": true
-              }
-            ]
-          }
-          EOF
-          cat teams_payload.json
-          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+      - name: Add comment on GitHub Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created.";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: commentBody,
+            });
