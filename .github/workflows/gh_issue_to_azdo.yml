@@ -34,9 +34,10 @@ jobs:
           WORK_ITEM_TYPE="Customer Escalation"
           
           # URL-encode the work item type (replace spaces with %20).
-          ENCODED_WORK_ITEM_TYPE=$(echo $WORK_ITEM_TYPE | sed 's/ /%20/g')
+          ENCODED_WORK_ITEM_TYPE=$(echo "$WORK_ITEM_TYPE" | sed 's/ /%20/g')
           
           # Construct the Azure DevOps API URL.
+          # The backslash before $ ensures that a literal $ appears as required by the API.
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$$ENCODED_WORK_ITEM_TYPE?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
           
@@ -73,24 +74,24 @@ jobs:
           WORK_ITEM_TYPE: ${{ steps.create_work_item.outputs.work_item_type }}
         run: |
           echo "Notifying NI developers on Teams about the new work item..."
-          # Build the JSON payload for Teams with work item details.
-          teams_payload='{
+          # Use a heredoc to build the JSON payload; note that the closing EOF must not be indented.
+          cat <<-EOF > teams_payload.json
+          {
             "@type": "MessageCard",
             "@context": "https://schema.org/extensions",
             "themeColor": "0076D7",
             "summary": "New Work Item Created",
             "sections": [
               {
-                "activityTitle": "A new work item for GitHub Issue: **'"$ISSUE_TITLE"'** has been created.",
+                "activityTitle": "A new work item for GitHub Issue: **$ISSUE_TITLE** has been created.",
                 "facts": [
-                  { "name": "Work Item Type", "value": "'"$WORK_ITEM_TYPE"'" },
-                  { "name": "Link", "value": "[View Work Item]('"$WORK_ITEM_LINK"')" }
+                  { "name": "Work Item Type", "value": "$WORK_ITEM_TYPE" },
+                  { "name": "Link", "value": "[View Work Item]($WORK_ITEM_LINK)" }
                 ],
                 "markdown": true
               }
             ]
-          }'
-          echo "$teams_payload" > teams_payload.json
+          }
+          EOF
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
-
