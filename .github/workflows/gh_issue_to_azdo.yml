@@ -73,10 +73,12 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document that includes both the issue body and a clickable link.
+          # Build a JSON patch document that includes the issue title and a description with a clickable link.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<p><strong>Issue Details:</strong></p><p>$ISSUE_BODY</p><p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
+            --arg description "<p><strong>Issue Details:</strong></p>
+                              <p>$ISSUE_BODY</p>
+                              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
@@ -90,13 +92,29 @@ jobs:
             --data @patch.json \
             "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
+          
+          # Extract the created work item ID from the response.
+          WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "Created Work Item ID: $WORK_ITEM_ID"
+          
+          # Add a comment with a tag to the created work item.
+          COMMENT_TEXT="Hey [~utkarsh.saxena@emerson.com], please review the work item details."
+          COMMENT_PAYLOAD=$(jq -n --arg text "$COMMENT_TEXT" '{ "text": $text }')
+          echo "$COMMENT_PAYLOAD" > comment.json
+          COMMENT_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workItems/$WORK_ITEM_ID/comments?api-version=6.0-preview.3"
+          RESPONSE_COMMENT=$(curl -s -u :$AZDO_PAT \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @comment.json \
+            "$COMMENT_URL")
+          echo "Azure DevOps comment response: $RESPONSE_COMMENT"
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created.";
+            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created in Azure DevOps.";
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
