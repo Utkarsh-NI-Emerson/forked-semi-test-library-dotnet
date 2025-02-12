@@ -64,21 +64,19 @@ jobs:
           result-encoding: string
 
       - name: Create work item in Azure DevOps
+        id: create_work_item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document that includes the issue title and a description with a clickable link.
+          # Build a JSON patch document with the issue title and URL.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<p><strong>Issue Details:</strong></p>
-                              <p>$ISSUE_BODY</p>
-                              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
+            --arg description "GitHub Issue URL: $ISSUE_URL" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
@@ -92,16 +90,30 @@ jobs:
             --data @patch.json \
             "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
-          
-          # Extract the created work item ID from the response.
+          # --- Minimal addition to capture the work item ID ---
           WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
           echo "Created Work Item ID: $WORK_ITEM_ID"
-          
-          # Add a comment with a tag to the created work item.
-          COMMENT_TEXT="Hey [~Utkarsh Saxena], please review the work item details."
-          COMMENT_PAYLOAD=$(jq -n --arg text "$COMMENT_TEXT" '{ "text": $text }')
+          echo "::set-output name=work_item_id::$WORK_ITEM_ID"
+          # --- End minimal addition ---
+
+      - name: Add at-mention comment on Azure DevOps work item
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+        run: |
+          # Retrieve the work item ID set in the previous step.
+          WORK_ITEM_ID=${{ steps.create_work_item.outputs.work_item_id }}
+          echo "Adding at-mention comment to work item ID $WORK_ITEM_ID"
+          # Build the JSON payload including at-mention markup and metadata.
+          COMMENT_PAYLOAD=$(jq -n \
+            --arg text "Hello <at id=\"0\">Utkarsh Saxena</at>, please review the work item details." \
+            --argjson mentions '[{"id": 0, "uniqueName": "utkarsh.saxena@emerson.com", "displayName": "Utkarsh Saxena"}]' \
+            '{ text: $text, mentions: $mentions }')
           echo "$COMMENT_PAYLOAD" > comment.json
+          # Construct the API URL to add the comment.
           COMMENT_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workItems/$WORK_ITEM_ID/comments?api-version=6.0-preview.3"
+          echo "Posting at-mention comment to $COMMENT_URL"
           RESPONSE_COMMENT=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json" \
@@ -114,7 +126,7 @@ jobs:
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created in Azure DevOps.";
+            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created.";
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
