@@ -98,7 +98,7 @@ jobs:
           echo "Created Work Item ID: $WORK_ITEM_ID"
           
           # Add a comment with a tag to the created work item.
-          COMMENT_TEXT="Hey [~utkarsh.saxena@emerson.com], please review the work item details."
+          COMMENT_TEXT="Hey [~Utkarsh Saxena], please review the work item details."
           COMMENT_PAYLOAD=$(jq -n --arg text "$COMMENT_TEXT" '{ "text": $text }')
           echo "$COMMENT_PAYLOAD" > comment.json
           COMMENT_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workItems/$WORK_ITEM_ID/comments?api-version=6.0-preview.3"
