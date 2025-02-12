@@ -70,12 +70,13 @@ jobs:
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document with the issue title and URL.
+          # Build a JSON patch document that includes both the issue body and a clickable link.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "GitHub Issue URL: $ISSUE_URL" \
+            --arg description "<p><strong>Issue Details:</strong></p><p>$ISSUE_BODY</p><p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
