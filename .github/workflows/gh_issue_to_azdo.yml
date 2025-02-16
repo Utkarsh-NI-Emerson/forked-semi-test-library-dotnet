@@ -63,6 +63,7 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
+          # Utkarsh Saxena's email address
           AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
@@ -79,6 +80,22 @@ jobs:
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
 
+      - name: Get Azure DevOps User ID
+        id: get-user-id
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+        run: |
+          # Use the descriptor obtained in the previous step
+          USER_DESCRIPTOR=${{ steps.get-user-descriptor.outputs.descriptor }}
+          echo "Using User Descriptor: $USER_DESCRIPTOR"
+          # Call the GET API to fetch user details (returns the same descriptor for our purposes)
+          RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users/${USER_DESCRIPTOR}?api-version=7.1-preview.1")
+          echo "User details:"
+          echo "$RESPONSE" | jq .
+          # We'll assume that the user ID to be used for the Markdown mention is the descriptor.
+          echo "::set-output name=userID::$USER_DESCRIPTOR"
+
       - name: Create work item in Azure DevOps (Markdown)
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
@@ -87,12 +104,15 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
+          # Use the user ID (which in this case is the descriptor) for the Markdown mention
+          AZDO_USER_ID: ${{ steps.get-user-id.outputs.userID }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
+          # This is the exact line where the mention is inserted using Markdown:
+          # It uses the syntax @<UserID> to mention the user.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "@<${AZDO_USER_DESCRIPTOR}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
+            --arg description "@<${AZDO_USER_ID}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
