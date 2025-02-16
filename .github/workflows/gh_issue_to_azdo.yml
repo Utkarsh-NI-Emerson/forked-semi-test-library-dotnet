@@ -1,4 +1,3 @@
-
 name: Issue Created Handler
 
 on:
@@ -18,7 +17,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           echo "Notifying NI developers on Teams about the new issue..."
-          # Build the JSON payload for Teams with the issue details in a shell variable.
+          # Build the JSON payload for Teams with the issue details.
           teams_payload='{
             "@type": "MessageCard",
             "@context": "https://schema.org/extensions",
@@ -46,11 +45,11 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            // Retrieve all label names and normalize them to lower case for case-insensitive matching.
+            // Retrieve all label names and normalize them to lower case.
             const labels = context.payload.issue.labels.map(label => label.name.toLowerCase());
             console.log("Normalized issue labels: " + labels);
             let workItemType = "";
-            // Use precedence: if "bug" exists, choose Bug; else if "enhancement" exists, choose User Story; otherwise, default to Customer Escalation.
+            // Precedence: if "bug" exists, choose Bug; else if "enhancement" exists, choose User Story; otherwise, default.
             if (labels.includes("bug")) {
               workItemType = "Bug";
             } else if (labels.includes("enhancement")) {
@@ -64,6 +63,27 @@ jobs:
             return encodedType;
           result-encoding: string
 
+      - name: Get Azure DevOps User Descriptor
+        id: get-user-descriptor
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+          # Specify the email of the user you want to mention.
+          AZDO_USER_EMAIL: "utkarsh.saxena@emerson.com"
+        run: |
+          echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
+          # Use the Graph API to filter users by email.
+          RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users?api-version=7.1-preview.1&filterValue=${AZDO_USER_EMAIL}")
+          echo "$RESPONSE" | jq .
+          # Assume the first matching user is the one to mention.
+          DESCRIPTOR=$(echo "$RESPONSE" | jq -r '.value[0].descriptor')
+          if [ -z "$DESCRIPTOR" ]; then
+            echo "Error: Could not retrieve user descriptor for ${AZDO_USER_EMAIL}"
+            exit 1
+          fi
+          echo "User descriptor: $DESCRIPTOR"
+          echo "::set-output name=descriptor::$DESCRIPTOR"
+
       - name: Create work item in Azure DevOps
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
@@ -72,12 +92,19 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          # Set the display name for the user to mention.
+          AZDO_USER_NAME: "Utkarsh Saxena"
+          # Retrieve the descriptor from the previous step.
+          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document that includes both the issue body and a clickable link.
+          # Build a JSON patch document with the issue details and the user mention in the description.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<p><strong>Issue Details:</strong></p><p>$ISSUE_BODY</p><p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
+            --arg description "<p><strong>Issue Details:</strong></p>
+                              <p>$ISSUE_BODY</p>
+                              <p><a href=\"#\" data-vss-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">@${AZDO_USER_NAME}</a> has been assigned.</p>
+                              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
@@ -91,7 +118,7 @@ jobs:
             --data @patch.json \
             "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
-          
+
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
