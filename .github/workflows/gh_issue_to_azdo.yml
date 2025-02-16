@@ -63,7 +63,6 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          # Utkarsh Saxena's email address
           AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
@@ -80,7 +79,7 @@ jobs:
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
 
-      - name: Create work item in Azure DevOps
+      - name: Create work item in Azure DevOps (Markdown)
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
@@ -88,23 +87,12 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # Utkarsh Saxena's display name
-          AZDO_USER_NAME: "Utkarsh Saxena"
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<div>
-              <p><strong>Issue Details:</strong></p>
-              <p>$ISSUE_BODY</p>
-              <p>
-                <a href=\"#\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
-                  @${AZDO_USER_NAME}
-                </a> Please check this issue.
-              </p>
-              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
-            </div>" \
+            --arg description "@<${AZDO_USER_DESCRIPTOR}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
