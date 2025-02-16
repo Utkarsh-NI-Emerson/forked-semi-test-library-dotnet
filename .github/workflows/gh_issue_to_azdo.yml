@@ -17,7 +17,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           echo "Notifying NI developers on Teams about the new issue..."
-          # Build the JSON payload for Teams with the issue details.
           teams_payload='{
             "@type": "MessageCard",
             "@context": "https://schema.org/extensions",
@@ -45,11 +44,8 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            // Retrieve all label names and normalize them to lower case.
             const labels = context.payload.issue.labels.map(label => label.name.toLowerCase());
-            console.log("Normalized issue labels: " + labels);
             let workItemType = "";
-            // Precedence: if "bug" exists, choose Bug; else if "enhancement" exists, choose User Story; otherwise, default.
             if (labels.includes("bug")) {
               workItemType = "Bug";
             } else if (labels.includes("enhancement")) {
@@ -59,7 +55,6 @@ jobs:
             }
             // URL-encode the work item type (e.g., "User Story" becomes "User%20Story")
             const encodedType = encodeURIComponent(workItemType);
-            console.log("Work item type (encoded): " + encodedType);
             return encodedType;
           result-encoding: string
 
@@ -68,14 +63,15 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          # Specify the email of the user you want to mention.
-          AZDO_USER_EMAIL: "utkarsh.saxena@emerson.com"
+          # Utkarsh Saxena's email address
+          AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
-          # Use the Graph API to filter users by email.
-          RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users?api-version=7.1-preview.1&filterValue=${AZDO_USER_EMAIL}")
+          ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''${AZDO_USER_EMAIL}'''))")
+          echo "Encoded email: $ENCODED_EMAIL"
+          RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users?api-version=7.1-preview.1&filterValue=${ENCODED_EMAIL}")
+          echo "Graph API Response:"
           echo "$RESPONSE" | jq .
-          # Assume the first matching user is the one to mention.
           DESCRIPTOR=$(echo "$RESPONSE" | jq -r '.value[0].descriptor')
           if [ -z "$DESCRIPTOR" ]; then
             echo "Error: Could not retrieve user descriptor for ${AZDO_USER_EMAIL}"
@@ -92,26 +88,28 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # Set the display name for the user to mention.
+          # Utkarsh Saxena's display name
           AZDO_USER_NAME: "Utkarsh Saxena"
-          # Retrieve the descriptor from the previous step.
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Build a JSON patch document with the issue details and the user mention in the description.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<p><strong>Issue Details:</strong></p>
-                              <p>$ISSUE_BODY</p>
-                              <p><a href=\"#\" data-vss-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">@${AZDO_USER_NAME}</a> has been assigned.</p>
-                              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>" \
+            --arg description "<div>
+              <p><strong>Issue Details:</strong></p>
+              <p>$ISSUE_BODY</p>
+              <p>
+                <a href=\"#\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
+                  @${AZDO_USER_NAME}
+                </a> Please check this issue.
+              </p>
+              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
+            </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
-          # Construct the Azure DevOps API URL using the determined work item type.
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
           echo "Work Item URL: $WORK_ITEM_URL"
-          # Call the Azure DevOps API to create the work item.
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
