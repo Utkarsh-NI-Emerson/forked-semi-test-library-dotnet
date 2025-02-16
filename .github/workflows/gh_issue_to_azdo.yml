@@ -63,7 +63,8 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
+          # User's email address
+          AZDO_USER_EMAIL: user@example.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
           ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''${AZDO_USER_EMAIL}'''))")
@@ -87,19 +88,21 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          AZDO_USER_NAME: "Utkarsh Saxena"
-          # Use the user descriptor from the get-user-descriptor step as the unique user ID
+          # User's display name for the mention
+          AZDO_USER_NAME: "User"
+          # Use the descriptor from the previous step as the unique user ID
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # The HTML snippet below renders a clickable user mention.
+          # The HTML snippet below renders a clickable mention.
+          # Using href="javascript:void(0)" prevents navigation when clicking the mention.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
             --arg description "<div>
               <p><strong>Issue Details:</strong></p>
               <p>$ISSUE_BODY</p>
               <p>
-                <a href=\"#\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
+                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
                   @${AZDO_USER_NAME}
                 </a> has been assigned.
               </p>
