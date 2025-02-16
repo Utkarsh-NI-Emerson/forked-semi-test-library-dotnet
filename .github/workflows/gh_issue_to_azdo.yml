@@ -62,13 +62,12 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          # User's email address
+          # Replace with the actual user's email address
           AZDO_USER_EMAIL: user@example.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
           ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''${AZDO_USER_EMAIL}'''))")
           echo "Encoded email: $ENCODED_EMAIL"
-          # Using the latest version of the API (7.1-preview.1)
           RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users?api-version=7.1-preview.1&filterValue=${ENCODED_EMAIL}")
           echo "Graph API Response:"
           echo "$RESPONSE" | jq .
@@ -80,7 +79,7 @@ jobs:
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
 
-      - name: Create work item in Azure DevOps (Markdown Mention)
+      - name: Create work item in Azure DevOps (HTML Mention)
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
@@ -88,18 +87,30 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # Use the descriptor output as the unique user ID for the mention
+          # User's display name for the mention
+          AZDO_USER_NAME: "User"
+          # Use the descriptor from the previous step as the unique user ID for the mention
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # The Markdown mention is inserted in the line below using the syntax @<UserID>
+          # The HTML snippet below properly tags the user using an anchor tag.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "@<${AZDO_USER_DESCRIPTOR}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
+            --arg description "<div>
+              <p><strong>Issue Details:</strong></p>
+              <p>$ISSUE_BODY</p>
+              <p>
+                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
+                  @${AZDO_USER_NAME}
+                </a> has been assigned.
+              </p>
+              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
+            </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
-          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
+          # Using API version 7.1-preview.1 for work item creation
+          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=7.1-preview.1"
           echo "Work Item URL: $WORK_ITEM_URL"
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
