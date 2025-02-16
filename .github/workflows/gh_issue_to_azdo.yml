@@ -95,7 +95,7 @@ jobs:
           # The Markdown mention is inserted in the line below using the syntax @<UserID>
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "@<${AZDO_USER_DESCRIPTOR}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
+            --arg description "@<AZDO_USER_DESCRIPTOR> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
