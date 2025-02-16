@@ -80,7 +80,7 @@ jobs:
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
 
-      - name: Create work item in Azure DevOps (HTML Mention)
+      - name: Create work item in Azure DevOps (Markdown Mention)
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
@@ -88,26 +88,14 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # User's display name for the mention
-          AZDO_USER_NAME: "User"
-          # Use the descriptor from the previous step as the unique user ID
+          # Using the descriptor as the unique user ID for the Markdown mention
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # The HTML snippet below renders a clickable mention.
-          # Using href="javascript:void(0)" prevents navigation when clicking the mention.
+          # This is the exact line where the user is mentioned using Markdown.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
-            --arg description "<div>
-              <p><strong>Issue Details:</strong></p>
-              <p>$ISSUE_BODY</p>
-              <p>
-                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
-                  @${AZDO_USER_NAME}
-                </a> has been assigned.
-              </p>
-              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
-            </div>" \
+            --arg description "@<${AZDO_USER_DESCRIPTOR}> has been assigned.\n\n**Issue Details:**\n\n$ISSUE_BODY\n\n[View Issue on GitHub]($ISSUE_URL)" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
