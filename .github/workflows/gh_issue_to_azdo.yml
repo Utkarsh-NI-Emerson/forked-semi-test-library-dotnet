@@ -129,23 +129,27 @@ jobs:
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
           AZDO_USER_NAME: "Utkarsh Saxena"
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
+          # Make sure this unique name/email matches the identity in Azure DevOps
+          AZDO_USER_UNIQUENAME: "utkarsh.saxena@emerson.com"
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
         run: |
           echo "Posting comment on work item ID: $WORK_ITEM_ID"
-          # Construct comment text using the <at> tag for the mention.
+          # Create the comment text with the <at> tag
           COMMENT_TEXT="This work item has been created and <at id=\"0\">${AZDO_USER_NAME}</at> is assigned for further action."
           
-          # Build a JSON payload that includes both the comment text and a 'mentions' array.
+          # Build a JSON payload including the mention with the uniqueName field
           COMMENT_PAYLOAD=$(jq -n \
             --arg text "$COMMENT_TEXT" \
             --arg descriptor "$AZDO_USER_DESCRIPTOR" \
             --arg name "$AZDO_USER_NAME" \
+            --arg uniqueName "$AZDO_USER_UNIQUENAME" \
             '{
                 text: $text,
                 mentions: [
                   {
                     id: 0,
                     displayName: $name,
+                    uniqueName: $uniqueName,
                     descriptor: $descriptor
                   }
                 ]
@@ -156,6 +160,7 @@ jobs:
           echo "Posting comment to: $COMMENT_URL"
           COMMENT_RESPONSE=$(curl -s -u :$AZDO_PAT -X POST -H "Content-Type: application/json" --data @comment_payload.json "$COMMENT_URL")
           echo "Comment response: $COMMENT_RESPONSE"
+
 
 
       - name: Add comment on GitHub Issue
