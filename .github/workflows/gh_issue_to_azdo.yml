@@ -120,8 +120,12 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
           WORK_ITEM_URL: ${{ steps.create-work-item.outputs.work_item_url }}
-          WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
+          WORK_ITEM_TYPE_ENCODED: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
+          echo "Decoding work item type..."
+          WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
+          echo "Decoded Work Item Type: $WORK_ITEM_TYPE"
+
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
             "@type": "MessageCard",
@@ -138,6 +142,7 @@ jobs:
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
