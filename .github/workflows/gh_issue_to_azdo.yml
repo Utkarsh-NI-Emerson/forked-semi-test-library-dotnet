@@ -47,7 +47,6 @@ jobs:
           fi
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
-
       - name: Create work item in Azure DevOps (HTML Mention)
         id: create-work-item
         env:
@@ -62,7 +61,6 @@ jobs:
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-
           # Base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
@@ -70,15 +68,14 @@ jobs:
               <p><strong>Issue Details:</strong></p>
               <p>$ISSUE_BODY</p>
               <p>
-                <a href="javascript:void(0)" data-vss-mention="true" data-mention="version:2.0,${AZDO_USER_DESCRIPTOR}">
+                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
                   @${AZDO_USER_NAME}
                 </a> has been assigned.
               </p>
-              <p><a href="$ISSUE_URL">View Issue on GitHub</a></p>
+              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
-
           # Add additional fields only if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
@@ -86,31 +83,24 @@ jobs:
               {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
-
           echo "$PATCH_DOC" > patch.json
-
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
-
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
             "$WORK_ITEM_API_URL")
-
           echo "Azure DevOps response: $RESPONSE"
           WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
-
           if [ "$WORK_ITEM_ID" = "null" ]; then
             echo "Error: Work item creation failed."
             exit 1
           fi
-
           echo "Work item created with ID: $WORK_ITEM_ID"
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
-
       - name: Notify NI Developers on Teams
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
@@ -125,7 +115,6 @@ jobs:
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
           echo "Decoded Work Item Type: $WORK_ITEM_TYPE"
-
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
             "@type": "MessageCard",
@@ -142,8 +131,6 @@ jobs:
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
-
-
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         env:
