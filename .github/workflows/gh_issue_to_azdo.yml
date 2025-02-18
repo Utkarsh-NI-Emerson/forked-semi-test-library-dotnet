@@ -8,37 +8,6 @@ jobs:
   handle-new-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Notify NI Developers on Teams
-        env:
-          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          echo "Notifying NI developers on Teams about the new issue..."
-          teams_payload='{
-            "@type": "MessageCard",
-            "@context": "https://schema.org/extensions",
-            "themeColor": "0076D7",
-            "summary": "New GitHub Issue Created",
-            "sections": [
-              {
-                "activityTitle": "New GitHub Issue: **'"$ISSUE_TITLE"'** (#'"$ISSUE_NUMBER"')",
-                "facts": [
-                  { "name": "Title", "value": "'"$ISSUE_TITLE"'" },
-                  { "name": "Issue Number", "value": "'"$ISSUE_NUMBER"'" },
-                  { "name": "Description", "value": "'"$ISSUE_BODY"'" },
-                  { "name": "URL", "value": "[View Issue]('"$ISSUE_URL"')" }
-                ],
-                "markdown": true
-              }
-            ]
-          }'
-          echo "$teams_payload" > teams_payload.json
-          cat teams_payload.json
-          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
-
       - name: Determine Work Item Type
         id: determine-work-item-type
         uses: actions/github-script@v6
@@ -89,7 +58,9 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          # User's display name for the mention
           AZDO_USER_NAME: "Utkarsh Saxena"
+          # Use the descriptor from the previous step as the unique user ID
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
@@ -108,67 +79,66 @@ jobs:
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
-          # Use the determined work item type from your earlier step (e.g. Bug, User Story, etc.)
-          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
-          echo "Work Item URL: $WORK_ITEM_URL"
+          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
+          echo "Work Item API URL: $WORK_ITEM_API_URL"
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
-            "$WORK_ITEM_URL")
+            "$WORK_ITEM_API_URL")
           echo "Azure DevOps response: $RESPONSE"
-          # Extract the work item ID from the response and set it as an output
           WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
-          echo "Work item ID: $WORK_ITEM_ID"
+          if [ "$WORK_ITEM_ID" = "null" ]; then
+            echo "Error: Work item creation failed."
+            exit 1
+          fi
+          echo "Work item created with ID: $WORK_ITEM_ID"
+          WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
+          echo "::set-output name=work_item_url::$WORK_ITEM_URL"
 
-      - name: Post comment on Azure DevOps work item
+      - name: Notify NI Developers on Teams
         env:
-          AZDO_ORG: ${{ secrets.AZDO_ORG }}
-          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
-          AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          AZDO_USER_NAME: "Utkarsh Saxena"
-          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
-          # Make sure this unique name/email matches the identity in Azure DevOps
-          AZDO_USER_UNIQUENAME: "utkarsh.saxena@emerson.com"
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+          WORK_ITEM_URL: ${{ steps.create-work-item.outputs.work_item_url }}
         run: |
-          echo "Posting comment on work item ID: $WORK_ITEM_ID"
-          # Create the comment text with the <at> tag
-          COMMENT_TEXT="This work item has been created and <at id=\"0\">${AZDO_USER_NAME}</at> is assigned for further action."
-          
-          # Build a JSON payload including the mention with the uniqueName field
-          COMMENT_PAYLOAD=$(jq -n \
-            --arg text "$COMMENT_TEXT" \
-            --arg descriptor "$AZDO_USER_DESCRIPTOR" \
-            --arg name "$AZDO_USER_NAME" \
-            --arg uniqueName "$AZDO_USER_UNIQUENAME" \
-            '{
-                text: $text,
-                mentions: [
-                  {
-                    id: 0,
-                    displayName: $name,
-                    uniqueName: $uniqueName,
-                    descriptor: $descriptor
-                  }
-                ]
-            }')
-          
-          echo "$COMMENT_PAYLOAD" > comment_payload.json
-          COMMENT_URL="https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/wit/workItems/${WORK_ITEM_ID}/comments?api-version=6.0-preview.3"
-          echo "Posting comment to: $COMMENT_URL"
-          COMMENT_RESPONSE=$(curl -s -u :$AZDO_PAT -X POST -H "Content-Type: application/json" --data @comment_payload.json "$COMMENT_URL")
-          echo "Comment response: $COMMENT_RESPONSE"
-
-
+          echo "Notifying NI developers on Teams about the new issue and work item creation..."
+          teams_payload='{
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": "0076D7",
+            "summary": "New GitHub Issue and Work Item Created",
+            "sections": [
+              {
+                "activityTitle": "New GitHub Issue: **'"$ISSUE_TITLE"'** (#'"$ISSUE_NUMBER"')",
+                "facts": [
+                  { "name": "Title", "value": "'"$ISSUE_TITLE"'" },
+                  { "name": "Issue Number", "value": "'"$ISSUE_NUMBER"'" },
+                  { "name": "Work Item ID", "value": "'"$WORK_ITEM_ID"'" },
+                  { "name": "Work Item URL", "value": "[View Work Item]('"$WORK_ITEM_URL"')" },
+                  { "name": "Description", "value": "'"$ISSUE_BODY"'" }
+                ],
+                "markdown": true
+              }
+            ]
+          }'
+          echo "$teams_payload" > teams_payload.json
+          cat teams_payload.json
+          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const commentBody = "The NI development team has been notified via Teams and a corresponding work item has been created.";
+            const commentBody = "The NI development team has been notified via Teams and a corresponding work item (ID: " +
+              process.env.WORK_ITEM_ID +
+              ") has been created.";
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
