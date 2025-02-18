@@ -112,7 +112,7 @@ jobs:
             "summary": "New GitHub Issue and Work Item Created",
             "sections": [
               {
-                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')\n\n**Title:** '"$ISSUE_TITLE"'\n\n**Description:** '"$ISSUE_BODY"'\n\n**Work Item ID:** '"$WORK_ITEM_ID"'\n\n**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
+                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')\n\n**Title:** '"$ISSUE_TITLE"'\n**Description:** '"$ISSUE_BODY"'\n**Issue URL:** [View Issue]('"$ISSUE_URL"')\n**Work Item ID:** '"$WORK_ITEM_ID"'\n**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
                 "markdown": true
               }
             ]
