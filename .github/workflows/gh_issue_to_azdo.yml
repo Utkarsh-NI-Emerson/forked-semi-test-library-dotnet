@@ -59,8 +59,11 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           AZDO_USER_NAME: "Utkarsh Saxena"
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
+          WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
+
+          # Base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
             --arg description "<div>
@@ -75,24 +78,39 @@ jobs:
             </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
+
+          # Add additional fields only if the work item type is "Customer Escalation"
+          if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
+            PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
+              [{"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": "2 - Medium (SLA = 3 Business days)"},
+              {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
+              {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
+          fi
+
           echo "$PATCH_DOC" > patch.json
-          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
+
+          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
+
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
             "$WORK_ITEM_API_URL")
+
           echo "Azure DevOps response: $RESPONSE"
           WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
+
           if [ "$WORK_ITEM_ID" = "null" ]; then
             echo "Error: Work item creation failed."
             exit 1
           fi
+
           echo "Work item created with ID: $WORK_ITEM_ID"
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
+
 
       - name: Notify NI Developers on Teams
         env:
