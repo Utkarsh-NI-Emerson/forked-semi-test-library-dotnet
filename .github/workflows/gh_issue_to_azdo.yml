@@ -70,11 +70,10 @@ jobs:
               <p><strong>Issue Details:</strong></p>
               <p>$ISSUE_BODY</p>
               <p>
-                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
-                  @${AZDO_USER_NAME}
-                </a> has been assigned.
+                <a href="javascript:void(0)" data-vss-mention="true" data-mention="version:2.0,${AZDO_USER_DESCRIPTOR}">
+                  @${AZDO_USER_NAME}</a> has been assigned.
               </p>
-              <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
+              <p><a href="$ISSUE_URL">View Issue on GitHub</a></p>
             </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
