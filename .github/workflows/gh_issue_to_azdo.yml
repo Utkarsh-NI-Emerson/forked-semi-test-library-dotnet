@@ -32,7 +32,6 @@ jobs:
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          # User's email address
           AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
         run: |
           echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
@@ -58,9 +57,7 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # User's display name for the mention
           AZDO_USER_NAME: "Utkarsh Saxena"
-          # Use the descriptor from the previous step as the unique user ID
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
@@ -115,14 +112,7 @@ jobs:
             "summary": "New GitHub Issue and Work Item Created",
             "sections": [
               {
-                "activityTitle": "New GitHub Issue: **'"$ISSUE_TITLE"'** (#'"$ISSUE_NUMBER"')",
-                "facts": [
-                  { "name": "Title", "value": "'"$ISSUE_TITLE"'" },
-                  { "name": "Issue Number", "value": "'"$ISSUE_NUMBER"'" },
-                  { "name": "Work Item ID", "value": "'"$WORK_ITEM_ID"'" },
-                  { "name": "Work Item URL", "value": "[View Work Item]('"$WORK_ITEM_URL"')" },
-                  { "name": "Description", "value": "'"$ISSUE_BODY"'" }
-                ],
+                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')\n\n**Title:** '"$ISSUE_TITLE"'\n\n**Description:** '"$ISSUE_BODY"'\n\n**Work Item ID:** '"$WORK_ITEM_ID"'\n\n**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
                 "markdown": true
               }
             ]
@@ -133,6 +123,8 @@ jobs:
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
+        env:
+          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
         with:
           script: |
             const issueNumber = context.payload.issue.number;
