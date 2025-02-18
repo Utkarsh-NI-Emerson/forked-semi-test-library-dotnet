@@ -132,17 +132,31 @@ jobs:
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
         run: |
           echo "Posting comment on work item ID: $WORK_ITEM_ID"
-          # Create an HTML snippet with a mention using data attributes.
-          COMMENT_TEXT="<div>
-            <p>This work item has been created and <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">@${AZDO_USER_NAME}</a> is assigned for further action.</p>
-          </div>"
-          COMMENT_PAYLOAD=$(jq -n --arg text "$COMMENT_TEXT" '{ "text": $text }')
+          # Construct comment text using the <at> tag for the mention.
+          COMMENT_TEXT="This work item has been created and <at id=\"0\">${AZDO_USER_NAME}</at> is assigned for further action."
+          
+          # Build a JSON payload that includes both the comment text and a 'mentions' array.
+          COMMENT_PAYLOAD=$(jq -n \
+            --arg text "$COMMENT_TEXT" \
+            --arg descriptor "$AZDO_USER_DESCRIPTOR" \
+            --arg name "$AZDO_USER_NAME" \
+            '{
+                text: $text,
+                mentions: [
+                  {
+                    id: 0,
+                    displayName: $name,
+                    descriptor: $descriptor
+                  }
+                ]
+            }')
+          
           echo "$COMMENT_PAYLOAD" > comment_payload.json
-          # Comments API endpoint; note the api-version (preview) may be updated as needed.
           COMMENT_URL="https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/wit/workItems/${WORK_ITEM_ID}/comments?api-version=6.0-preview.3"
           echo "Posting comment to: $COMMENT_URL"
           COMMENT_RESPONSE=$(curl -s -u :$AZDO_PAT -X POST -H "Content-Type: application/json" --data @comment_payload.json "$COMMENT_URL")
           echo "Comment response: $COMMENT_RESPONSE"
+
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
