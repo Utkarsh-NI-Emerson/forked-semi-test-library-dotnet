@@ -38,6 +38,7 @@ jobs:
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+
       - name: Determine Work Item Type
         id: determine-work-item-type
         uses: actions/github-script@v6
@@ -78,7 +79,9 @@ jobs:
           fi
           echo "User descriptor: $DESCRIPTOR"
           echo "::set-output name=descriptor::$DESCRIPTOR"
+
       - name: Create work item in Azure DevOps (HTML Mention)
+        id: create-work-item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
@@ -86,14 +89,10 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          # User's display name for the mention
           AZDO_USER_NAME: "Utkarsh Saxena"
-          # Use the descriptor from the previous step as the unique user ID
           AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # The HTML snippet below renders a clickable mention.
-          # Using href="javascript:void(0)" prevents navigation when clicking the mention.
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue: $ISSUE_TITLE" \
             --arg description "<div>
@@ -109,6 +108,7 @@ jobs:
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           echo "$PATCH_DOC" > patch.json
+          # Use the determined work item type from your earlier step (e.g. Bug, User Story, etc.)
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${{ steps.determine-work-item-type.outputs.result }}?api-version=6.0"
           echo "Work Item URL: $WORK_ITEM_URL"
           RESPONSE=$(curl -s -u :$AZDO_PAT \
@@ -117,6 +117,33 @@ jobs:
             --data @patch.json \
             "$WORK_ITEM_URL")
           echo "Azure DevOps response: $RESPONSE"
+          # Extract the work item ID from the response and set it as an output
+          WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "Work item ID: $WORK_ITEM_ID"
+          echo "::set-output name=work_item_id::$WORK_ITEM_ID"
+
+      - name: Post comment on Azure DevOps work item
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+          AZDO_USER_NAME: "Utkarsh Saxena"
+          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
+          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+        run: |
+          echo "Posting comment on work item ID: $WORK_ITEM_ID"
+          # Create an HTML snippet with a mention using data attributes.
+          COMMENT_TEXT="<div>
+            <p>This work item has been created and <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">@${AZDO_USER_NAME}</a> is assigned for further action.</p>
+          </div>"
+          COMMENT_PAYLOAD=$(jq -n --arg text "$COMMENT_TEXT" '{ "text": $text }')
+          echo "$COMMENT_PAYLOAD" > comment_payload.json
+          # Comments API endpoint; note the api-version (preview) may be updated as needed.
+          COMMENT_URL="https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/wit/workItems/${WORK_ITEM_ID}/comments?api-version=6.0-preview.3"
+          echo "Posting comment to: $COMMENT_URL"
+          COMMENT_RESPONSE=$(curl -s -u :$AZDO_PAT -X POST -H "Content-Type: application/json" --data @comment_payload.json "$COMMENT_URL")
+          echo "Comment response: $COMMENT_RESPONSE"
+
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
