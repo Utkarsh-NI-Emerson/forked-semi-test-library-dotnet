@@ -27,57 +27,30 @@ jobs:
             return encodedType;
           result-encoding: string
 
-      - name: Get Azure DevOps User Descriptor
-        id: get-user-descriptor
-        env:
-          AZDO_ORG: ${{ secrets.AZDO_ORG }}
-          AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          AZDO_USER_EMAIL: utkarsh.saxena@emerson.com
-        run: |
-          echo "Fetching Azure DevOps user descriptor for ${AZDO_USER_EMAIL}"
-          ENCODED_EMAIL=$(python -c "import urllib.parse; print(urllib.parse.quote('''${AZDO_USER_EMAIL}'''))")
-          echo "Encoded email: $ENCODED_EMAIL"
-          RESPONSE=$(curl -s -u :$AZDO_PAT "https://vssps.dev.azure.com/${AZDO_ORG}/_apis/graph/users?api-version=7.1-preview.1&filterValue=${ENCODED_EMAIL}")
-          echo "Graph API Response:"
-          echo "$RESPONSE" | jq .
-          DESCRIPTOR=$(echo "$RESPONSE" | jq -r '.value[0].descriptor')
-          if [ -z "$DESCRIPTOR" ]; then
-            echo "Error: Could not retrieve user descriptor for ${AZDO_USER_EMAIL}"
-            exit 1
-          fi
-          echo "User descriptor: $DESCRIPTOR"
-          echo "::set-output name=descriptor::$DESCRIPTOR"
-
-      - name: Create work item in Azure DevOps (HTML Mention)
+      - name: Create work item in Azure DevOps
         id: create-work-item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          AZDO_USER_NAME: "Utkarsh Saxena"
-          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          # Base work item payload
+          # Build the base work item payload
           PATCH_DOC=$(jq -n \
-            --arg title "GitHub Issue: $ISSUE_TITLE" \
+            --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
               <p><strong>Issue Details:</strong></p>
               <p>$ISSUE_BODY</p>
-              <p>
-                <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">
-                  @${AZDO_USER_NAME}
-                </a> has been assigned.
-              </p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description}]')
-          # Add additional fields only if the work item type is "Customer Escalation"
+          # Add additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
               [{"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": "2 - Medium (SLA = 3 Business days)"},
@@ -102,38 +75,6 @@ jobs:
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
-
-      - name: Add comment to Azure DevOps work item
-        id: add-comment
-        env:
-          AZDO_ORG: ${{ secrets.AZDO_ORG }}
-          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
-          AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
-          AZDO_USER_NAME: "Utkarsh Saxena"
-          AZDO_USER_DESCRIPTOR: ${{ steps.get-user-descriptor.outputs.descriptor }}
-        run: |
-          echo "Adding comment to Azure DevOps work item ID: $WORK_ITEM_ID"
-          
-          # Creating the comment in HTML format
-          COMMENT_BODY="<div>
-            <p>Have a look at this work item. <a href=\"javascript:void(0)\" data-vss-mention=\"true\" data-mention=\"version:2.0,${AZDO_USER_DESCRIPTOR}\">@${AZDO_USER_NAME}</a></p>
-          </div>"
-          
-          # Create a comment on the work item using Azure DevOps REST API
-          RESPONSE=$(curl -s -u :$AZDO_PAT \
-            -X POST \
-            -H "Content-Type: application/json" \
-            --data "{\"text\": \"$COMMENT_BODY\"}" \
-            "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID/comments?api-version=6.0")
-          
-          echo "Azure DevOps response: $RESPONSE"
-          COMMENT_ID=$(echo "$RESPONSE" | jq -r '.id')
-          if [ "$COMMENT_ID" = "null" ]; then
-            echo "Error: Failed to add comment to the work item."
-            exit 1
-          fi
-          echo "Comment added to the work item with ID: $COMMENT_ID"
 
       - name: Notify NI Developers on Teams
         env:
