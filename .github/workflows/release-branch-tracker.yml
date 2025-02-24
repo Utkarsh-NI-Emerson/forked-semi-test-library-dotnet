@@ -10,15 +10,15 @@ jobs:
   comment-on-issues:
     runs-on: ubuntu-latest
     steps:
-      - name: Process issues for new release
+      - name: Process issues for new release with debugging
         uses: actions/github-script@v6
         with:
           script: |
             const { owner, repo } = context.repo;
             
             // Define the target username from which the comment must originate.
-            const targetUser = "approvedUser"; // Replace "approvedUser" with the specific GitHub username.
-
+            const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual GitHub username.
+            
             // Step 1: Get the previous (latest) release date.
             let previousReleaseDate;
             try {
@@ -40,7 +40,7 @@ jobs:
             });
             console.log(`Found ${searchResults.total_count} issues with matching comment.`);
             
-            // Step 3: Filter issues based on comment timestamp and comment author.
+            // Step 3: Filter issues based on comment timestamp and comment author with debugging.
             for (const issue of searchResults.items) {
               // Retrieve all comments for the issue.
               const { data: comments } = await github.rest.issues.listComments({
@@ -50,13 +50,26 @@ jobs:
                 per_page: 100,
               });
               
-              // Check if at least one matching comment was added after the previous release
-              // and the comment is from the target user.
-              const eligible = comments.some(comment => {
-                return comment.body.includes("Issue has been fixed and should be in next release") &&
-                       new Date(comment.created_at) > previousReleaseDate &&
-                       comment.user.login === targetUser;
-              });
+              let eligible = false;
+              
+              // Check each comment and log detailed info for debugging.
+              for (const comment of comments) {
+                console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
+                
+                const containsText = comment.body.includes("Issue has been fixed and should be in next release");
+                const createdAfter = new Date(comment.created_at) > previousReleaseDate;
+                const isFromTargetUser = comment.user.login === targetUser;
+                
+                console.log(`Comment ${comment.id}:`);
+                console.log(`  Contains required text? ${containsText}`);
+                console.log(`  Created at ${comment.created_at} > previous release (${previousReleaseDate})? ${createdAfter}`);
+                console.log(`  Is from target user? (Actual: ${comment.user.login}, Expected: ${targetUser}) ${isFromTargetUser}`);
+                
+                if (containsText && createdAfter && isFromTargetUser) {
+                  eligible = true;
+                  break; // Found a valid comment, no need to check further.
+                }
+              }
               
               // Step 4: If eligible, post the follow-up comment.
               if (eligible) {
