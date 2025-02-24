@@ -44,7 +44,8 @@ jobs:
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
-              <p><strong>Issue Details:</strong></p>
+              <p><strong>ISSUE DETAILS:</strong></p>
+              <p>Issue Number: $ISSUE_NUMBER</p>
               <p>$ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
@@ -75,6 +76,37 @@ jobs:
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
+
+      - name: Link GitHub Issue to Azure DevOps Work Item
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          echo "Linking GitHub Issue to the Azure DevOps Work Item"
+          PATCH_RELATION=$(jq -n \
+            --arg issueUrl "$ISSUE_URL" \
+            '[{
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "Hyperlink",
+                "url": $issueUrl,
+                "attributes": {
+                  "name": "GitHub Issue"
+                }
+              }
+            }]')
+          echo "$PATCH_RELATION" > patch-relation.json
+          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID?api-version=6.0"
+          RESPONSE=$(curl -s -u :$AZDO_PAT \
+            -X PATCH \
+            -H "Content-Type: application/json-patch+json" \
+            --data @patch-relation.json \
+            "$WORK_ITEM_API_URL")
+          echo "Response: $RESPONSE"
 
       - name: Notify NI Developers on Teams
         env:
@@ -123,3 +155,4 @@ jobs:
               issue_number: issueNumber,
               body: commentBody,
             });
+
