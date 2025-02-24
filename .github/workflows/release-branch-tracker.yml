@@ -1,0 +1,74 @@
+name: Comment on Fixed Issues (Filtered by Release Date and Comment User)
+
+on:
+  create:
+    # Trigger when a branch matching release/* is created.
+    branches:
+      - 'release/*'
+
+jobs:
+  comment-on-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process issues for new release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            
+            // Define the target username from which the comment must originate.
+            const targetUser = "Utkarsh-NI-Emerson"; // Replace "approvedUser" with the specific GitHub username.
+
+            // Step 1: Get the previous (latest) release date.
+            let previousReleaseDate;
+            try {
+              const latestRelease = await github.repos.getLatestRelease({ owner, repo });
+              previousReleaseDate = new Date(latestRelease.data.published_at);
+              console.log("Latest release published at:", previousReleaseDate);
+            } catch (error) {
+              console.log("No previous release found; defaulting to epoch start.");
+              previousReleaseDate = new Date(0); // Fallback if no release exists.
+            }
+            
+            // Step 2: Search for issues that have the target comment.
+            const searchQuery = `repo:${owner}/${repo} is:issue "Issue has been fixed and should be in next release." in:comments`;
+            console.log("Search query:", searchQuery);
+            
+            const { data: searchResults } = await github.search.issuesAndPullRequests({
+              q: searchQuery,
+              per_page: 100,
+            });
+            console.log(`Found ${searchResults.total_count} issues with matching comment.`);
+            
+            // Step 3: Filter issues based on comment timestamp and comment author.
+            for (const issue of searchResults.items) {
+              // Retrieve all comments for the issue.
+              const { data: comments } = await github.issues.listComments({
+                owner,
+                repo,
+                issue_number: issue.number,
+                per_page: 100,
+              });
+              
+              // Check if at least one matching comment was added after the previous release
+              // and the comment is from the target user.
+              const eligible = comments.some(comment => {
+                return comment.body.includes("Issue has been fixed and should be in next release") &&
+                       new Date(comment.created_at) > previousReleaseDate &&
+                       comment.user.login === targetUser;
+              });
+              
+              // Step 4: If eligible, post the follow-up comment.
+              if (eligible) {
+                const commentBody = "the fix of this issue should be in the release, and it will be auto closed in 30 days";
+                await github.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body: commentBody,
+                });
+                console.log(`Comment added to issue #${issue.number}`);
+              } else {
+                console.log(`Issue #${issue.number} is not eligible; skipping.`);
+              }
+            }
