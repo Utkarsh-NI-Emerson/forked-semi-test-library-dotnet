@@ -41,6 +41,7 @@ jobs:
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
+          # Build the base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
@@ -53,7 +54,13 @@ jobs:
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description},
               {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
-          # (Additional code for handling Customer Escalation work items if needed)
+          # Add additional custom fields if the work item type is "Customer Escalation"
+          if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
+            PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
+              [{"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": "2 - Medium (SLA = 3 Business days)"},
+              {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
+              {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
+          fi
           echo "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
