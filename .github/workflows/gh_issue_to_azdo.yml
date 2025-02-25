@@ -33,7 +33,6 @@ jobs:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          AZDO_AREA_PATH: ${{ secrets.AZDO_AREA_PATH }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
@@ -50,10 +49,8 @@ jobs:
               <p>$ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
-            --arg areaPath "$AZDO_AREA_PATH" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
-              {"op": "add", "path": "/fields/System.Description", "value": $description},
-              {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
+              {"op": "add", "path": "/fields/System.Description", "value": $description}]')
           # Add additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
@@ -80,6 +77,36 @@ jobs:
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
 
+      - name: Link GitHub Issue to Azure DevOps Work Item
+        env:
+          AZDO_ORG: ${{ secrets.AZDO_ORG }}
+          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
+          AZDO_PAT: ${{ secrets.AZDO_PAT }}
+          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: |
+          echo "Linking GitHub Issue to the Azure DevOps Work Item"
+          PATCH_RELATION=$(jq -n \
+            --arg issueUrl "$ISSUE_URL" \
+            '[{
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "Hyperlink",
+                "url": $issueUrl,
+                "attributes": {
+                  "name": "GitHub Issue"
+                }
+              }
+            }]')
+          echo "$PATCH_RELATION" > patch-relation.json
+          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID?api-version=6.0"
+          RESPONSE=$(curl -s -u :$AZDO_PAT \
+            -X PATCH \
+            -H "Content-Type: application/json-patch+json" \
+            --data @patch-relation.json \
+            "$WORK_ITEM_API_URL")
+          echo "Response: $RESPONSE"
 
       - name: Notify NI Developers on Teams
         env:
@@ -116,12 +143,11 @@ jobs:
         uses: actions/github-script@v6
         env:
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+          WORK_ITEM_URL: ${{ steps.create-work-item.outputs.work_item_url }}
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const commentBody = "The NI development team has been notified via Teams and a corresponding work item (ID: " +
-              process.env.WORK_ITEM_ID +
-              ") has been created.";
+            const commentBody = `The NI development team has been notified and a corresponding work item [ID: ${process.env.WORK_ITEM_ID}](${process.env.WORK_ITEM_URL}) has been created.`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
