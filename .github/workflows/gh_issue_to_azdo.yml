@@ -88,17 +88,19 @@ jobs:
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_REPO_GUID: ${{ secrets.GH_REPO_GUID }}
         run: |
           echo "Linking GitHub Issue to the Azure DevOps Work Item"
           PATCH_RELATION=$(jq -n \
-            --arg issueUrl "$ISSUE_URL" \
+            --arg issueNumber "180" \
+            --arg repoGuid "$GH_REPO_GUID" \
             '[{
               "op": "add",
               "path": "/relations/-",
               "value": {
-                "rel": "Hyperlink", # Change to ArtifactLink if not working.
-                "url": "https://github.com/ni/semi-test-library-dotnet/issues/180", 
+                "rel": "ArtifactLink",
+                "url": "vstfs:///GitHub/Issue/\($repoGuid)%2F\($issueNumber)",
                 "attributes": {
                   "name": "GitHub Issue"
                 }
