@@ -19,10 +19,11 @@ jobs:
             // Define the target username from which the comment must originate.
             const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual GitHub username.
             
-            // Step 1: Get the previous (latest) release date.
+            // Step 1: Get the previous (latest) release date and release info.
+            let latestRelease;
             let previousReleaseDate;
             try {
-              const latestRelease = await github.rest.repos.getLatestRelease({ owner, repo });
+              latestRelease = await github.rest.repos.getLatestRelease({ owner, repo });
               previousReleaseDate = new Date(latestRelease.data.published_at);
               console.log("Latest release published at:", previousReleaseDate);
             } catch (error) {
@@ -56,7 +57,7 @@ jobs:
               for (const comment of comments) {
                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
                 
-                const containsText = comment.body.includes("Issue has been fixed and should be in next release");
+                const containsText = comment.body.includes("Issue has been fixed and should be in next release.");
                 const createdAfter = new Date(comment.created_at) > previousReleaseDate;
                 const isFromTargetUser = comment.user.login === targetUser;
                 
@@ -73,7 +74,7 @@ jobs:
               
               // Step 4: If eligible, post the follow-up comment.
               if (eligible) {
-                const commentBody = "The fix of this issue should be in the release, and it will be auto closed in 30 days";
+                const commentBody = `The fix for this issue is included in version ${latestRelease.data.tag_name}, which has now been released ([click here](${latestRelease.data.html_url})). This issue will auto close within the next 30 days.`;
                 await github.rest.issues.createComment({
                   owner,
                   repo,
