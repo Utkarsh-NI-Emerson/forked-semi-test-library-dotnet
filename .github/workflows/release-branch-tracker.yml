@@ -73,7 +73,7 @@ jobs:
               
               // Step 4: If eligible, post the follow-up comment.
               if (eligible) {
-                const commentBody = "the fix of this issue should be in the release, and it will be auto closed in 30 days";
+                const commentBody = "The fix of this issue should be in the release, and it will be auto closed in 30 days";
                 await github.rest.issues.createComment({
                   owner,
                   repo,
