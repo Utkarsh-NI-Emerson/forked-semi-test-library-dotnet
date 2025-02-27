@@ -27,7 +27,6 @@ jobs:
             return encodedType;
           result-encoding: string
 
-      #Once check for Area Path and AZDO_PROJECT
       - name: Create work item in Azure DevOps
         id: create-work-item
         env:
@@ -55,65 +54,58 @@ jobs:
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description},
               {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
-          # Add additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
               [{"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": "2 - Medium (SLA = 3 Business days)"},
               {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
-          echo "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
-          echo "Work Item API URL: $WORK_ITEM_API_URL"
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
             --data @patch.json \
             "$WORK_ITEM_API_URL")
-          echo "Azure DevOps response: $RESPONSE"
           WORK_ITEM_ID=$(echo "$RESPONSE" | jq -r '.id')
           if [ "$WORK_ITEM_ID" = "null" ]; then
             echo "Error: Work item creation failed."
             exit 1
           fi
-          echo "Work item created with ID: $WORK_ITEM_ID"
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
 
-      #Check the link in json before pushing.
-      - name: Link GitHub Issue to Azure DevOps Work Item
-        env:
-          AZDO_ORG: ${{ secrets.AZDO_ORG }}
-          AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
-          AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          GH_REPO_GUID: ${{ secrets.GH_REPO_GUID }}
-        run: |
-          echo "Linking GitHub Issue to the Azure DevOps Work Item"
-          PATCH_RELATION=$(jq -n \
-            --arg issueNumber "180" \
-            --arg repoGuid "$GH_REPO_GUID" \
-            '[{
-              "op": "add",
-              "path": "/relations/-",
-              "value": {
-                "rel": "ArtifactLink",
-                "url": "vstfs:///GitHub/Issue/\($repoGuid)%2F\($issueNumber)",
-                "attributes": {
-                  "name": "GitHub Issue"
-                }
-              }
-            }]')
-          echo "$PATCH_RELATION" > patch-relation.json
-          WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID?api-version=6.0"
-          RESPONSE=$(curl -s -u :$AZDO_PAT \
-            -X PATCH \
-            -H "Content-Type: application/json-patch+json" \
-            --data @patch-relation.json \
-            "$WORK_ITEM_API_URL")
-          echo "Response: $RESPONSE"
+      # - name: Link GitHub Issue to Azure DevOps Work Item
+      #   env:
+      #     AZDO_ORG: ${{ secrets.AZDO_ORG }}
+      #     AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
+      #     AZDO_PAT: ${{ secrets.AZDO_PAT }}
+      #     WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
+      #     ISSUE_NUMBER: ${{ github.event.issue.number }}
+      #     GH_REPO_GUID: ${{ secrets.GH_REPO_GUID }}
+      #   run: |
+      #     echo "Linking GitHub Issue to the Azure DevOps Work Item"
+      #     PATCH_RELATION=$(jq -n \
+      #       --arg issueNumber "$ISSUE_NUMBER" \
+      #       --arg repoGuid "$GH_REPO_GUID" \
+      #       '[{
+      #         "op": "add",
+      #         "path": "/relations/-",
+      #         "value": {
+      #           "rel": "ArtifactLink",
+      #           "url": "vstfs:///GitHub/Issue/\($repoGuid)%2F\($issueNumber)",
+      #           "attributes": {
+      #             "name": "GitHub Issue"
+      #           }
+      #         }
+      #       }]')
+      #     "$PATCH_RELATION" > patch-relation.json
+      #     WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID?api-version=6.0"
+      #     RESPONSE=$(curl -s -u :$AZDO_PAT \
+      #       -X PATCH \
+      #       -H "Content-Type: application/json-patch+json" \
+      #       --data @patch-relation.json \
+      #       "$WORK_ITEM_API_URL")
 
       - name: Notify NI Developers on Teams
         env:
@@ -126,9 +118,7 @@ jobs:
           WORK_ITEM_URL: ${{ steps.create-work-item.outputs.work_item_url }}
           WORK_ITEM_TYPE_ENCODED: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
-          echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
-          echo "Decoded Work Item Type: $WORK_ITEM_TYPE"
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
             "@type": "MessageCard",
@@ -142,7 +132,7 @@ jobs:
               }
             ]
           }'
-          echo "$teams_payload" > teams_payload.json
+          "$teams_payload" > teams_payload.json
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
 
