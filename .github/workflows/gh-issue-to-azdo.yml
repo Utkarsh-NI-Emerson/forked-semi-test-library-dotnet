@@ -27,20 +27,21 @@ jobs:
             return encodedType;
           result-encoding: string
 
+      #Once check for Area Path and AZDO_PROJECT
       - name: Create work item in Azure DevOps
         id: create-work-item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
           AZDO_PROJECT: ${{ secrets.AZDO_PROJECT }}
           AZDO_PAT: ${{ secrets.AZDO_PAT }}
-          AZDO_AREA_PATH: ${{ secrets.AZDO_AREA_PATH }}
+          # AZDO_AREA_PATH: ${{ secrets.AZDO_AREA_PATH }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
-          # Build the base work item payload
+          echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
@@ -49,10 +50,12 @@ jobs:
               <p>$ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
-            --arg areaPath "$AZDO_AREA_PATH" \
+            # --arg areaPath "$AZDO_AREA_PATH" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
-              {"op": "add", "path": "/fields/System.Description", "value": $description},
-              {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
+              {"op": "add", "path": "/fields/System.Description", "value": $description}]')
+            # '[{"op": "add", "path": "/fields/System.Title", "value": $title},
+            #   {"op": "add", "path": "/fields/System.Description", "value": $description},
+            #   {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
           # Add additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
@@ -62,6 +65,7 @@ jobs:
           fi
           "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
+          echo "Work Item API URL: $WORK_ITEM_API_URL"
           RESPONSE=$(curl -s -u :$AZDO_PAT \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
@@ -100,13 +104,14 @@ jobs:
       #           }
       #         }
       #       }]')
-      #     "$PATCH_RELATION" > patch-relation.json
+      #     echo "$PATCH_RELATION" > patch-relation.json
       #     WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$WORK_ITEM_ID?api-version=6.0"
       #     RESPONSE=$(curl -s -u :$AZDO_PAT \
       #       -X PATCH \
       #       -H "Content-Type: application/json-patch+json" \
       #       --data @patch-relation.json \
       #       "$WORK_ITEM_API_URL")
+      #     echo "Response: $RESPONSE"
 
       - name: Notify NI Developers on Teams
         env:
