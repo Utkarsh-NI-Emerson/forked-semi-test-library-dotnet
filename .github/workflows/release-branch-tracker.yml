@@ -10,29 +10,22 @@ jobs:
   comment-on-issues:
     runs-on: ubuntu-latest
     steps:
-      - name: Process issues for new release with debugging
+      - name: Process issues for new release
         uses: actions/github-script@v6
         with:
           script: |
             const { owner, repo } = context.repo;
+            // Extract version from the branch name (e.g., "refs/heads/release/25.5")
+            const branchRef = context.ref;
+            const version = branchRef.replace('refs/heads/release/', '');
+            // Build the release link using the branch URL format
+            const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
             
-            // Define the target username from which the comment must originate.
-            const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual GitHub username.
+            // Define the target username for filtering comments.
+            const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual username.
             
-            // Step 1: Get the previous (latest) release date and release info.
-            let latestRelease;
-            let previousReleaseDate;
-            try {
-              latestRelease = await github.rest.repos.getLatestRelease({ owner, repo });
-              previousReleaseDate = new Date(latestRelease.data.published_at);
-              console.log("Latest release published at:", previousReleaseDate);
-            } catch (error) {
-              console.log("No previous release found; defaulting to epoch start.");
-              previousReleaseDate = new Date(0); // Fallback if no release exists.
-            }
-            
-            // Step 2: Search for issues that have the target comment.
-            const searchQuery = `repo:${owner}/${repo} is:issue "Issue has been fixed and should be in next release" in:comments`;
+            // Search for issues that include the fixed comment text.
+            const searchQuery = `repo:${owner}/${repo} is:issue "Issue has been fixed and should be in next release." in:comments`;
             console.log("Search query:", searchQuery);
             
             const { data: searchResults } = await github.rest.search.issuesAndPullRequests({
@@ -41,9 +34,8 @@ jobs:
             });
             console.log(`Found ${searchResults.total_count} issues with matching comment.`);
             
-            // Step 3: Filter issues based on comment timestamp and comment author with debugging.
+            // Process each issue.
             for (const issue of searchResults.items) {
-              // Retrieve all comments for the issue.
               const { data: comments } = await github.rest.issues.listComments({
                 owner,
                 repo,
@@ -52,29 +44,19 @@ jobs:
               });
               
               let eligible = false;
-              
-              // Check each comment and log detailed info for debugging.
               for (const comment of comments) {
                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
-                
                 const containsText = comment.body.includes("Issue has been fixed and should be in next release.");
-                const createdAfter = new Date(comment.created_at) > previousReleaseDate;
                 const isFromTargetUser = comment.user.login === targetUser;
-                
-                console.log(`Comment ${comment.id}:`);
-                console.log(`  Contains required text? ${containsText}`);
-                console.log(`  Created at ${comment.created_at} > previous release (${previousReleaseDate})? ${createdAfter}`);
-                console.log(`  Is from target user? (Actual: ${comment.user.login}, Expected: ${targetUser}) ${isFromTargetUser}`);
-                
-                if (containsText && createdAfter && isFromTargetUser) {
+                console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}`);
+                if (containsText && isFromTargetUser) {
                   eligible = true;
-                  break; // Found a valid comment, no need to check further.
+                  break;
                 }
               }
               
-              // Step 4: If eligible, post the follow-up comment.
               if (eligible) {
-                const commentBody = `The fix for this issue is included in version ${latestRelease.data.tag_name}, which has now been released ([click here](${latestRelease.data.html_url})). This issue will auto close within the next 30 days.`;
+                const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([click here](${releaseLink})). This issue will auto close within the next 30 days.`;
                 await github.rest.issues.createComment({
                   owner,
                   repo,
