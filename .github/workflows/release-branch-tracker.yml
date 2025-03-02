@@ -2,9 +2,9 @@ name: Comment on Fixed Issues (Filtered by Release Date and Comment User)
 
 on:
   create:
-    # Trigger when a branch matching release/* is created.
+    # Trigger when a branch matching releases/* is created. See in forked repo its release/* and not releases/*
     branches:
-      - 'release/*'
+      - 'releases/*'
 
 jobs:
   comment-on-issues:
@@ -15,46 +15,54 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            // Extract version from the branch name (e.g., "refs/heads/release/25.5")
             const branchRef = context.ref;
-            const version = branchRef.replace('refs/heads/release/', '');
-            // Build the release link using the branch URL format
-            const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
+            const version = branchRef.replace('refs/heads/releases/', '');
+            const releaseLink = `https://github.com/${owner}/${repo}/tree/releases/${version}`;
+            const targetUser = "Utkarsh-NI-Emerson"; // Have to replace with the actual username (Github).
+
+            let latestRelease;
+            let previousReleaseDate;
+            try {
+              latestRelease = await github.rest.repos.getLatestRelease({ owner, repo });
+              previousReleaseDate = new Date(latestRelease.data.published_at);
+              console.log("Latest release published at:", previousReleaseDate);
+            }catch (error) {
+              console.log("No previous release found; defaulting to epoch start.");
+              previousReleaseDate = new Date(0); // Fallback if no release exists.
+            }
             
-            // Define the target username for filtering comments.
-            const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual username.
-            
-            // Search for issues that include the fixed comment text.
-            const searchQuery = `repo:${owner}/${repo} is:issue "Issue has been fixed and should be in next release." in:comments`;
+            const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
             console.log("Search query:", searchQuery);
-            
-            const { data: searchResults } = await github.rest.search.issuesAndPullRequests({
-              q: searchQuery,
+
+            const issues = await github.paginate(github.rest.search.issuesAndPullRequests, {
+              q: `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`,
               per_page: 100,
             });
-            console.log(`Found ${searchResults.total_count} issues with matching comment.`);
-            
-            // Process each issue.
-            for (const issue of searchResults.items) {
-              const { data: comments } = await github.rest.issues.listComments({
-                owner,
-                repo,
-                issue_number: issue.number,
-                per_page: 100,
+            console.log(`Found ${issues.length} issues with matching comment.`);
+
+            for (const issue of issues) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issue.number,
+              per_page: 100,
               });
-              
+                
               let eligible = false;
               for (const comment of comments) {
                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
-                const containsText = comment.body.includes("Issue has been fixed and should be in next release.");
+                const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
                 const isFromTargetUser = comment.user.login === targetUser;
-                console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}`);
-                if (containsText && isFromTargetUser) {
+
+                const createdAfter = new Date(comment.created_at) > previousReleaseDate;
+                console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}, Created after last release? ${createdAfter}`);
+                  
+                if (containsText && isFromTargetUser && createdAfter) {
                   eligible = true;
                   break;
                 }
               }
-              
+                
               if (eligible) {
                 const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([click here](${releaseLink})). This issue will auto close within the next 30 days.`;
                 await github.rest.issues.createComment({
@@ -68,3 +76,74 @@ jobs:
                 console.log(`Issue #${issue.number} is not eligible; skipping.`);
               }
             }
+
+# name: Comment on Fixed Issues (Filtered by Release Date and Comment User)
+
+# on:
+#   create:
+#     # Trigger when a branch matching release/* is created.
+#     branches:
+#       - 'release/*'
+
+# jobs:
+#   comment-on-issues:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Process issues for new release
+#         uses: actions/github-script@v6
+#         with:
+#           script: |
+#             const { owner, repo } = context.repo;
+#             // Extract version from the branch name (e.g., "refs/heads/release/25.5")
+#             const branchRef = context.ref;
+#             const version = branchRef.replace('refs/heads/release/', '');
+#             // Build the release link using the branch URL format
+#             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
+            
+#             // Define the target username for filtering comments.
+#             const targetUser = "Utkarsh-NI-Emerson"; // Replace with the actual username.
+            
+#             // Search for issues that include the fixed comment text.
+#             const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
+#             console.log("Search query:", searchQuery);
+            
+#             const { data: searchResults } = await github.rest.search.issuesAndPullRequests({
+#               q: searchQuery,
+#               per_page: 100,
+#             });
+#             console.log(`Found ${searchResults.total_count} issues with matching comment.`);
+            
+#             // Process each issue.
+#             for (const issue of searchResults.items) {
+#               const { data: comments } = await github.rest.issues.listComments({
+#                 owner,
+#                 repo,
+#                 issue_number: issue.number,
+#                 per_page: 100,
+#               });
+              
+#               let eligible = false;
+#               for (const comment of comments) {
+#                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
+#                 const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
+#                 const isFromTargetUser = comment.user.login === targetUser;
+#                 console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}`);
+#                 if (containsText && isFromTargetUser) {
+#                   eligible = true;
+#                   break;
+#                 }
+#               }
+              
+#               if (eligible) {
+#                 const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([click here](${releaseLink})). This issue will auto close within the next 30 days.`;
+#                 await github.rest.issues.createComment({
+#                   owner,
+#                   repo,
+#                   issue_number: issue.number,
+#                   body: commentBody,
+#                 });
+#                 console.log(`Comment added to issue #${issue.number}`);
+#               } else {
+#                 console.log(`Issue #${issue.number} is not eligible; skipping.`);
+#               }
+#             }
