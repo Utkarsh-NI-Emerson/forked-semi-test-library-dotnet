@@ -103,6 +103,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_DEVOPS_TOKEN: ${{ secrets.AZURE_DEVOPS_TOKEN }}
+          AZDO_ORG: ${{ env.AZDO_ORG }}
+          AZDO_PROJECT: ${{ env.AZDO_PROJECT }}
         with:
           script: |
             const fs = require('fs');
@@ -124,16 +126,18 @@ jobs:
                 owner,
                 repo,
                 issue_number: 138, // Hard-coded for testing.
-                # issue_number: issueNumber, // Actual change.
                 body: commentBody
               });
+
+              # issue_number: issueNumber, // Actual code in place of manual.
+
       
               // --- ADDED CODE START: Update the corresponding Azure DevOps work item ---
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
-              const azdoOrg = $AZDO_ORG;
-              const azdoProject = $AZDO_PROJECT;
+              const azdoOrg = process.env.AZDO_ORG;
+              const azdoProject = process.env.AZDO_PROJECT;
       
-              // For simplicity, we add the tag "GitHubCommented".
+              // For simplicity, we add the tag "GitHubCommented". (In production, you might merge with existing tags.)
               const patchCmd = `curl -s -u ":${azureToken}" -X PATCH "https://dev.azure.com/${azdoOrg}/${azdoProject}/_apis/wit/workitems/${workItemId}?api-version=7.1-preview.3" -H "Content-Type: application/json-patch+json" --data-binary "[{\\"op\\": \\"add\\", \\"path\\": \\"/fields/System.Tags\\", \\"value\\": \\"GitHubCommented\\"}]"`;
               console.log(`Executing command to update work item ${workItemId}: ${patchCmd}`);
               try {
