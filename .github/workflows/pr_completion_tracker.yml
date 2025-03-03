@@ -130,7 +130,7 @@ jobs:
       
               // --- ADDED CODE START: Update the corresponding Azure DevOps work item ---
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
-              const azdoOrg = process.env.AZDO_ORG;
+              const azdoOrg = $AZDO_ORG;
               const azdoProject = $AZDO_PROJECT;
       
               // For simplicity, we add the tag "GitHubCommented".
