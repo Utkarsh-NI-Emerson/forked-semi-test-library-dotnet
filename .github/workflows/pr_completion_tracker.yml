@@ -11,7 +11,7 @@ jobs:
     env:
       AZDO_ORG: ni
       AZDO_PROJECT: DevCentral
-      # Use single quotes to avoid needing to escape backslashes
+      # Use single quotes so the literal value contains one backslash
       AREA_PATH: 'DevCentral\Business Units\Semiconductor\STS APT App SW\Mixed Signal Libs and Tools'
       GITHUB_ORG: Utkarsh-NI-Emerson
       GITHUB_REPO: forked-semi-test-library-dotnet
@@ -24,19 +24,18 @@ jobs:
         run: |
           echo "Fetching closed work items updated in the last day..."
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          # Even though we use single quotes above, we still escape backslashes for the API query
+          # Convert single backslashes to double backslashes for valid JSON escaping.
+          # The literal AREA_PATH contains one backslash, and sed converts each "\" to "\\"
           AREA_PATH_ESCAPED=$(echo "$AREA_PATH" | sed 's/\\/\\\\/g')
           PAYLOAD="{\"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('User Story', 'Bug', 'Customer Escalation') AND [System.AreaPath] = '$AREA_PATH_ESCAPED'\"}"
           echo "Payload: $PAYLOAD"
-          # Build the Basic Auth header manually
+          # Build Basic Auth header from the Azure DevOps token
           AUTH=$(echo -n ":$PAT" | base64)
-          # Use -L to follow redirects if any
           RESPONSE=$(curl -s -L -X POST "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/wiql?api-version=7.1-preview.2" \
             -H "Content-Type: application/json" \
             -H "Authorization: Basic $AUTH" \
             --data-binary "$PAYLOAD")
           echo "Response: $RESPONSE"
-          # Check if the response contains a valid workItems array
           if echo "$RESPONSE" | jq -e '.workItems' >/dev/null 2>&1; then
             ITEM_COUNT=$(echo "$RESPONSE" | jq '.workItems | length')
             if [ "$ITEM_COUNT" -eq 0 ]; then
@@ -86,8 +85,7 @@ jobs:
                 echo "Work Item $id has no linked GitHub Issue."
             fi
           done < closed_items.txt
-          
-        # Change Manual Issue number.
+
       - name: Post Comments on GitHub Issues and Update Work Items
         id: post_comments
         run: |
