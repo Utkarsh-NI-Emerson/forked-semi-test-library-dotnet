@@ -1,130 +1,108 @@
-name: Fetch and Process Closed Work Items
+name: Comment on GitHub Issue for Closed Work Items
 
 on:
-  workflow_dispatch:  # Manual trigger
-  schedule:
-    - cron: "0 0 * * *"  # Runs daily at midnight; adjust as needed
+  workflow_dispatch: # This allows manual triggering
+
+env:
+  AZDO_ORG: ni
+  AZDO_PROJECT: DevCentral
+  AREA_PATH: DevCentral\Business Units\Semiconductor\STS APT App SW\Mixed Signal Libs and Tools
+  GITHUB_ORG: Utkarsh-NI-Emerson
+  GITHUB_REPO: forked-semi-test-library-dotnet
 
 jobs:
-  process-workitems:
+  CommentOnGitHubIssue:
     runs-on: ubuntu-latest
-    env:
-      AZDO_ORG: ni
-      AZDO_PROJECT: DevCentral
-      # Use single quotes so the literal value contains one backslash
-      AREA_PATH: 'DevCentral\Business Units\Semiconductor\STS APT App SW\Mixed Signal Libs and Tools'
-      GITHUB_ORG: Utkarsh-NI-Emerson
-      GITHUB_REPO: forked-semi-test-library-dotnet
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
       - name: Fetch Closed Work Items from Azure DevOps
-        id: fetch_workitems
         run: |
           echo "Fetching closed work items updated in the last day..."
-          PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          # Convert single backslashes to double backslashes for valid JSON escaping.
-          # The literal AREA_PATH contains one backslash, and sed converts each "\" to "\\"
-          AREA_PATH_ESCAPED=$(echo "$AREA_PATH" | sed 's/\\/\\\\/g')
-          PAYLOAD="{\"query\": \"SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('User Story', 'Bug', 'Customer Escalation') AND [System.AreaPath] = '$AREA_PATH_ESCAPED'\"}"
+          
+          TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}" # Use correct secret name
+          AREA_PATH_ESCAPED="${AREA_PATH//\\/\\\\}" # Ensure proper escaping
+          
+          echo "Escaped AREA_PATH: $AREA_PATH_ESCAPED"
+
+          PAYLOAD=$(jq -n \
+            --arg area "$AREA_PATH_ESCAPED" \
+            '{"query": "SELECT [System.Id] FROM WorkItems WHERE [System.State] = '\''Closed'\'' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('\''User Story'\'', '\''Bug'\'', '\''Customer Escalation'\'') AND [System.AreaPath] = $area"}')
+
           echo "Payload: $PAYLOAD"
-          # Build Basic Auth header from the Azure DevOps token
-          AUTH=$(echo -n ":$PAT" | base64)
-          RESPONSE=$(curl -s -L -X POST "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/wiql?api-version=7.1-preview.2" \
+
+          RESPONSE=$(curl -s -u ":$TOKEN" \
+            -X POST "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/wiql?api-version=7.1-preview.2" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Basic $AUTH" \
             --data-binary "$PAYLOAD")
-          echo "Response: $RESPONSE"
+
+          echo "Raw response from Azure DevOps:"
+          echo "$RESPONSE"
+
           if echo "$RESPONSE" | jq -e '.workItems' >/dev/null 2>&1; then
             ITEM_COUNT=$(echo "$RESPONSE" | jq '.workItems | length')
             if [ "$ITEM_COUNT" -eq 0 ]; then
-              echo "No closed work items returned. Exiting."
+              echo "No closed work items found. Exiting."
               exit 0
             fi
             echo "$RESPONSE" | jq -r '.workItems[].id' > closed_items.txt
-            echo "Closed work items saved to closed_items.txt"
           else
-            echo "Error: The response does not contain a valid 'workItems' array."
+            echo "Error: Response does not contain 'workItems'. Verify WIQL query."
             exit 1
           fi
+        shell: bash
 
-      - name: Process Work Items and Build Process List
-        id: process_workitems
+      - name: Process Work Items and Identify GitHub Issues
         run: |
           echo "Processing each work item..."
           if [ ! -s closed_items.txt ]; then
             echo "No closed work items found. Exiting."
             exit 0
           fi
-          > process_list.txt
+
+          TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+
           while read id; do
             echo "Processing Work Item ID: $id"
-            WI_DETAILS=$(curl -s -L \
-              -H "Authorization: Basic $(echo -n ":${{ secrets.AZURE_DEVOPS_TOKEN }}" | base64)" \
+            WI_DETAILS=$(curl -s -u ":$TOKEN" \
               -X GET "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?\$expand=relations&api-version=7.1-preview.2")
-            EXISTING_TAGS=$(echo "$WI_DETAILS" | jq -r '.fields["System.Tags"]')
-            echo "Existing tags for work item $id: $EXISTING_TAGS"
-            if echo "$EXISTING_TAGS" | grep -q "GitHubCommented"; then
-                echo "Work Item $id already processed. Skipping..."
-                continue
-            fi
+
             ISSUE_URL=$(echo "$WI_DETAILS" | jq -r '.relations[]? | select(.rel=="ArtifactLink" and .attributes.name=="GitHub Issue") | .url')
-            echo "Extracted ISSUE_URL for work item $id: $ISSUE_URL"
-            if [ -n "$ISSUE_URL" ] && [ "$ISSUE_URL" != "null" ]; then
-                DECODED_URL=$(python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))" "$ISSUE_URL")
-                echo "Decoded ISSUE_URL: $DECODED_URL"
-                if echo "$DECODED_URL" | grep -q "/GitHub/Issue/"; then
-                    ISSUE_NUMBER=$(basename "$DECODED_URL")
-                    echo "Work Item $id is linked to GitHub Issue number: $ISSUE_NUMBER"
-                    echo "$id,$ISSUE_NUMBER" >> process_list.txt
-                else
-                    echo "Work Item $id is linked to a non-issue GitHub item. Skipping."
-                fi
+
+            if [[ -n "$ISSUE_URL" && "$ISSUE_URL" != "null" ]]; then
+              ISSUE_NUMBER=$(basename "$ISSUE_URL")
+              echo "Work Item $id is linked to GitHub Issue number: $ISSUE_NUMBER"
+              echo "$id,$ISSUE_NUMBER" >> process_list.txt
             else
-                echo "Work Item $id has no linked GitHub Issue."
+              echo "Work Item $id has no linked GitHub Issue."
             fi
           done < closed_items.txt
+        shell: bash
 
-      - name: Post Comments on GitHub Issues and Update Work Items
-        id: post_comments
-        run: |
-          echo "Posting comments on retrieved GitHub issues..."
-          if [ ! -s process_list.txt ]; then
-            echo "No work items to process. Exiting."
-            exit 0
-          fi
-          while IFS=, read id issue_number; do
-            echo "Posting comment on GitHub Issue ${issue_number} for Work Item $id"
-            # API_URL="https://api.github.com/repos/$GITHUB_ORG/$GITHUB_REPO/issues/${issue_number}/comments"
-            API_URL="https://api.github.com/repos/$GITHUB_ORG/$GITHUB_REPO/issues/138/comments"
-            RESPONSE=$(curl -s -L -X POST "$API_URL" \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              -H "Content-Type: application/json" \
-              -d '{"body": "The corresponding work item has been closed. The fix should be available in the next release."}')
-            echo "Response from GitHub: $RESPONSE"
-            # Update the work item to mark it as processed
-            WI_DETAILS=$(curl -s -L \
-              -H "Authorization: Basic $(echo -n ":${{ secrets.AZURE_DEVOPS_TOKEN }}" | base64)" \
-              -X GET "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?api-version=7.1-preview.3")
-            EXISTING_TAGS=$(echo "$WI_DETAILS" | jq -r '.fields["System.Tags"]')
-            echo "Existing tags for work item $id: $EXISTING_TAGS"
-            if [ -z "$EXISTING_TAGS" ] || [ "$EXISTING_TAGS" = "null" ]; then
-              NEW_TAGS="GitHubCommented"
-            else
-              NEW_TAGS="${EXISTING_TAGS};GitHubCommented"
-            fi
-            echo "Updating work item $id with new tags: $NEW_TAGS"
-            curl -s -L \
-              -H "Authorization: Basic $(echo -n ":${{ secrets.AZURE_DEVOPS_TOKEN }}" | base64)" \
-              -X PATCH "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?api-version=7.1-preview.3" \
-              -H "Content-Type: application/json-patch+json" \
-              --data-binary "[{\"op\": \"add\", \"path\": \"/fields/System.Tags\", \"value\": \"${NEW_TAGS}\"}]"
-          done < process_list.txt
+      - name: Post Comments on GitHub Issues
+        uses: actions/github-script@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const commentBody = "The corresponding work item has been closed. The fix should be available in the next release.";
 
-      - name: Display Processed Work Items
-        run: |
-          echo "Processed work items and posted comments. Contents of process_list.txt:"
-          cat process_list.txt || echo "No processed work items."
+            if (!fs.existsSync('process_list.txt')) {
+              console.log("No issues to process. Exiting.");
+              return;
+            }
+
+            const processList = fs.readFileSync('process_list.txt', 'utf8').trim().split('\n');
+            
+            for (const line of processList) {
+              const [workItemId, issueNumber] = line.split(',');
+
+              console.log(`Posting comment on GitHub Issue #${issueNumber} for Work Item ${workItemId}`);
+              github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: 138,                       // Hard-Coded for Testing.
+                body: commentBody
+              });
+            }
+# Issue number is Hard Coded.
