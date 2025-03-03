@@ -1,14 +1,16 @@
 name: Comment on GitHub Issue for Closed Work Items
 
 on:
-  workflow_dispatch: # This allows manual triggering
+  workflow_dispatch: # This allows manual triggering.
+#   schedule:
+#     - cron: "0 0 * * *"  # Runs daily at midnight; adjust as needed
 
 env:
   AZDO_ORG: ni
   AZDO_PROJECT: DevCentral
   AREA_PATH: DevCentral\Business Units\Semiconductor\STS APT App SW\Mixed Signal Libs and Tools
-  GITHUB_ORG: Utkarsh-NI-Emerson
-  GITHUB_REPO: forked-semi-test-library-dotnet
+#   GITHUB_ORG: Utkarsh-NI-Emerson
+#   GITHUB_REPO: forked-semi-test-library-dotnet
 
 jobs:
   CommentOnGitHubIssue:
@@ -18,25 +20,31 @@ jobs:
         run: |
           echo "Fetching closed work items updated in the last day..."
           
-          TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}" # Use correct secret name
-          AREA_PATH_ESCAPED="${AREA_PATH//\\/\\\\}" # Ensure proper escaping
+          # Use the Azure DevOps token secret
+          TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}"
           
+          # AREA_PATH is defined with a single backslash in the YAML environment.
+          # Escape the backslashes so that they are correctly represented in JSON.
+          AREA_PATH_ESCAPED="${AREA_PATH//\\/\\\\}"
           echo "Escaped AREA_PATH: $AREA_PATH_ESCAPED"
-
-          PAYLOAD=$(jq -n \
-            --arg area "$AREA_PATH_ESCAPED" \
-            '{"query": "SELECT [System.Id] FROM WorkItems WHERE [System.State] = '\''Closed'\'' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('\''User Story'\'', '\''Bug'\'', '\''Customer Escalation'\'') AND [System.AreaPath] = $area"}')
-
+          
+          # Build the WIQL query in a Bash variable.
+          QUERY="SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('User Story', 'Bug', 'Customer Escalation') AND [System.AreaPath] = '$AREA_PATH_ESCAPED'"
+          # Use jq to produce the JSON payload.
+          PAYLOAD=$(jq -n --arg query "$QUERY" '{query: $query}')
+          
           echo "Payload: $PAYLOAD"
-
+          
+          # Make the POST call to the WIQL API.
           RESPONSE=$(curl -s -u ":$TOKEN" \
             -X POST "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/wiql?api-version=7.1-preview.2" \
             -H "Content-Type: application/json" \
             --data-binary "$PAYLOAD")
-
+          
           echo "Raw response from Azure DevOps:"
           echo "$RESPONSE"
-
+          
+          # Check if the response contains a valid 'workItems' array.
           if echo "$RESPONSE" | jq -e '.workItems' >/dev/null 2>&1; then
             ITEM_COUNT=$(echo "$RESPONSE" | jq '.workItems | length')
             if [ "$ITEM_COUNT" -eq 0 ]; then
