@@ -17,14 +17,21 @@ jobs:
       - name: Fetch Closed Work Items from Azure DevOps
         run: |
           echo "Fetching closed work items updated in the last day..."
+          
+          # Use the Azure DevOps token secret
           TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+          
+          # AREA_PATH is defined with a single backslash in the YAML environment.
+          # Escape the backslashes so that they are correctly represented in JSON.
           AREA_PATH_ESCAPED="${AREA_PATH//\\/\\\\}"
-
-          # echo "Escaped AREA_PATH: $AREA_PATH_ESCAPED"
+          echo "Escaped AREA_PATH: $AREA_PATH_ESCAPED"
+          
+          # Build the WIQL query in a Bash variable.
           QUERY="SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('User Story', 'Bug', 'Customer Escalation') AND [System.AreaPath] = '$AREA_PATH_ESCAPED'"
+          # Use jq to produce the JSON payload.
           PAYLOAD=$(jq -n --arg query "$QUERY" '{query: $query}')
           
-          # echo "Payload: $PAYLOAD"
+          echo "Payload: $PAYLOAD"
           
           # Make the POST call to the WIQL API.
           RESPONSE=$(curl -s -u ":$TOKEN" \
@@ -32,8 +39,8 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary "$PAYLOAD")
           
-          # echo "Raw response from Azure DevOps:"
-          # echo "$RESPONSE"
+          echo "Raw response from Azure DevOps:"
+          echo "$RESPONSE"
           
           # Check if the response contains a valid 'workItems' array.
           if echo "$RESPONSE" | jq -e '.workItems' >/dev/null 2>&1; then
@@ -56,14 +63,11 @@ jobs:
             echo "No closed work items found. Exiting."
             exit 0
           fi
-
           TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-
           while read id; do
             echo "Processing Work Item ID: $id"
             WI_DETAILS=$(curl -s -u ":$TOKEN" \
               -X GET "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?\$expand=relations&api-version=7.1-preview.2")
-
             # === ADDED: Filter out work items that already have the "GitHubCommented" tag ===
             EXISTING_TAGS=$(echo "$WI_DETAILS" | jq -r '.fields["System.Tags"]')
             if echo "$EXISTING_TAGS" | grep -q "GitHubCommented"; then
@@ -83,10 +87,7 @@ jobs:
             else
               echo "Work Item $id has no linked GitHub Issue."
             fi
-
-
             # ISSUE_URL=$(echo "$WI_DETAILS" | jq -r '.relations[]? | select(.rel=="ArtifactLink" and .attributes.name=="GitHub Issue") | .url')
-
             # if [[ -n "$ISSUE_URL" && "$ISSUE_URL" != "null" ]]; then
             #   ISSUE_NUMBER=$(basename "$ISSUE_URL")
             #   echo "Work Item $id is linked to GitHub Issue number: $ISSUE_NUMBER"
@@ -97,7 +98,6 @@ jobs:
           done < closed_items.txt
         shell: bash
 
-        # Issue number is hard coded change before moving forward.
       - name: Post Comments on GitHub Issues and Update Work Items
         uses: actions/github-script@v6
         env:
@@ -128,9 +128,6 @@ jobs:
                 issue_number: 138, // Hard-coded for testing.
                 body: commentBody
               });
-
-              # issue_number: issueNumber, // Actual code in place of manual.
-
       
               // --- ADDED CODE START: Update the corresponding Azure DevOps work item ---
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
