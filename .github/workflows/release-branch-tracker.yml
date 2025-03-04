@@ -22,9 +22,7 @@ jobs:
             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
             const targetUser = "github-actions[bot]"; // Have to replace with the actual username (Github).
 
-
-            ###===========================================================================================
-
+            //===========================================================================================
 
             let latestReleaseBranch = null;
             let previousReleaseBranch = null;
@@ -83,9 +81,8 @@ jobs:
               console.log("Error fetching release branch details; defaulting previous release date to epoch start. Error details:", error);
             }
 
-            ###===========================================================================================
+            //===========================================================================================
 
-            
             const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
             console.log("Search query:", searchQuery);
 
