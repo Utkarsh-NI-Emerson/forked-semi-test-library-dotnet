@@ -20,7 +20,7 @@ jobs:
             const version = branchRef.replace('refs/heads/release/', '');
             // Changed release link to point to the release/ branch
             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
-            const targetUser = "github-actions"; // Have to replace with the actual username (Github).
+            const targetUser = "github-actions[bot]"; // Have to replace with the actual username (Github).
 
             let latestRelease;
             let previousReleaseDate;
@@ -55,8 +55,6 @@ jobs:
                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
                 const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
                 const isFromTargetUser = comment.user.login === targetUser;
-
-                console.log(`Comment ${comment.id} was made by user: ${comment.user.login}`);    // Remove fter debugging.
 
                 const createdAfter = new Date(comment.created_at) > previousReleaseDate;
                 console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}, Created after last release? ${createdAfter}`);
