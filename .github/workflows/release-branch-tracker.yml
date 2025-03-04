@@ -23,15 +23,39 @@ jobs:
             const targetUser = "github-actions[bot]"; // Have to replace with the actual username (Github).
 
             let latestRelease;
+            let previousRelease;
             let previousReleaseDate;
             try {
-              latestRelease = await github.rest.repos.getLatestRelease({ owner, repo });
-              previousReleaseDate = new Date(latestRelease.data.published_at);
-              console.log("Latest release published at:", previousReleaseDate);
+              // List all releases regardless of status.
+              const releasesResponse = await github.rest.repos.listReleases({
+                owner,
+                repo,
+                per_page: 100,
+              });
+              
+              if (releasesResponse.data.length >= 2) {
+                // Sort releases descending by creation date.
+                const releases = releasesResponse.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                latestRelease = releases[0];
+                previousRelease = releases[1];
+                previousReleaseDate = new Date(previousRelease.created_at);
+                console.log("Latest release version:", latestRelease.tag_name);
+                console.log("Latest release created at:", latestRelease.created_at);
+                console.log("Previous release version:", previousRelease.tag_name);
+                console.log("Previous release created at:", previousRelease.created_at);
+              } else if (releasesResponse.data.length === 1) {
+                latestRelease = releasesResponse.data[0];
+                previousRelease = null;
+                previousReleaseDate = new Date(0); // Only one release found; fallback to epoch start.
+                console.log("Only one release found. Latest release version:", latestRelease.tag_name);
+              } else {
+                throw new Error("No releases found");
+              }
             } catch (error) {
-              console.log("No previous release found; defaulting to epoch start.");
-              previousReleaseDate = new Date(0); // Fallback if no release exists.
+              console.log("Error fetching releases; defaulting previous release date to epoch start. Error details:", error);
+              previousReleaseDate = new Date(0);
             }
+
             
             const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
             console.log("Search query:", searchQuery);
