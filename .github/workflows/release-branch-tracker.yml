@@ -56,6 +56,8 @@ jobs:
                 const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
                 const isFromTargetUser = comment.user.login === targetUser;
 
+                console.log(`Comment ${comment.id} was made by user: ${comment.user.login}`);    // Remove fter debugging.
+
                 const createdAfter = new Date(comment.created_at) > previousReleaseDate;
                 console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}, Created after last release? ${createdAfter}`);
                   
