@@ -1,7 +1,7 @@
 name: Comment on GitHub Issue for Closed Work Items
 
 on:
-  workflow_dispatch: # This allows manual triggering.
+  workflow_dispatch:
 #   schedule:
 #     - cron: "0 0 * * *"  # Runs daily at midnight; adjust as needed
 
@@ -17,32 +17,18 @@ jobs:
       - name: Fetch Closed Work Items from Azure DevOps
         run: |
           echo "Fetching closed work items updated in the last day..."
-          
-          # Use the Azure DevOps token secret
           TOKEN="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          
-          # AREA_PATH is defined with a single backslash in the YAML environment.
-          # Escape the backslashes so that they are correctly represented in JSON.
           AREA_PATH_ESCAPED="${AREA_PATH//\\/\\\\}"
           echo "Escaped AREA_PATH: $AREA_PATH_ESCAPED"
-          
-          # Build the WIQL query in a Bash variable.
           QUERY="SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 2 AND [System.WorkItemType] IN ('User Story', 'Bug', 'Customer Escalation') AND [System.AreaPath] = '$AREA_PATH_ESCAPED'"
-          # Use jq to produce the JSON payload.
           PAYLOAD=$(jq -n --arg query "$QUERY" '{query: $query}')
-          
           echo "Payload: $PAYLOAD"
-          
-          # Make the POST call to the WIQL API.
           RESPONSE=$(curl -s -u ":$TOKEN" \
             -X POST "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/wiql?api-version=7.1-preview.2" \
             -H "Content-Type: application/json" \
             --data-binary "$PAYLOAD")
-          
-          echo "Raw response from Azure DevOps:"
-          echo "$RESPONSE"
-          
-          # Check if the response contains a valid 'workItems' array.
+          # echo "Raw response from Azure DevOps:"
+          # echo "$RESPONSE"
           if echo "$RESPONSE" | jq -e '.workItems' >/dev/null 2>&1; then
             ITEM_COUNT=$(echo "$RESPONSE" | jq '.workItems | length')
             if [ "$ITEM_COUNT" -eq 0 ]; then
@@ -68,33 +54,20 @@ jobs:
             echo "Processing Work Item ID: $id"
             WI_DETAILS=$(curl -s -u ":$TOKEN" \
               -X GET "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?\$expand=relations&api-version=7.1-preview.2")
-            # === ADDED: Filter out work items that already have the "GitHubCommented" tag ===
             EXISTING_TAGS=$(echo "$WI_DETAILS" | jq -r '.fields["System.Tags"]')
             if echo "$EXISTING_TAGS" | grep -q "GitHubCommented"; then
               echo "Work Item $id already has GitHubCommented tag. Skipping."
               continue
             fi
-            # ================================================================================
-            
             ISSUE_URL=$(echo "$WI_DETAILS" | jq -r '.relations[]? | select(.rel=="ArtifactLink" and .attributes.name=="GitHub Issue") | .url')
             if [[ -n "$ISSUE_URL" && "$ISSUE_URL" != "null" ]]; then
-              # === CHANGED: Decode the URL before extracting the basename ===
               DECODED_URL=$(python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))" "$ISSUE_URL")
               ISSUE_NUMBER=$(basename "$DECODED_URL")
-              # =============================================================================
               echo "Work Item $id is linked to GitHub Issue number: $ISSUE_NUMBER"
               echo "$id,$ISSUE_NUMBER" >> process_list.txt
             else
               echo "Work Item $id has no linked GitHub Issue."
             fi
-            # ISSUE_URL=$(echo "$WI_DETAILS" | jq -r '.relations[]? | select(.rel=="ArtifactLink" and .attributes.name=="GitHub Issue") | .url')
-            # if [[ -n "$ISSUE_URL" && "$ISSUE_URL" != "null" ]]; then
-            #   ISSUE_NUMBER=$(basename "$ISSUE_URL")
-            #   echo "Work Item $id is linked to GitHub Issue number: $ISSUE_NUMBER"
-            #   echo "$id,$ISSUE_NUMBER" >> process_list.txt
-            # else
-            #   echo "Work Item $id has no linked GitHub Issue."
-            # fi
           done < closed_items.txt
         shell: bash
 
@@ -111,14 +84,11 @@ jobs:
             const { execSync } = require('child_process');
             const { owner, repo } = context.repo;
             const commentBody = "The corresponding work item has been closed. The fix should be available in the next release.";
-      
             if (!fs.existsSync('process_list.txt')) {
               console.log("No issues to process. Exiting.");
               return;
             }
-      
             const processList = fs.readFileSync('process_list.txt', 'utf8').trim().split('\n');
-            
             for (const line of processList) {
               const [workItemId, issueNumber] = line.split(',');
               console.log(`Posting comment on GitHub Issue #${issueNumber} for Work Item ${workItemId}`);
@@ -128,13 +98,9 @@ jobs:
                 issue_number: 138, // Hard-coded for testing.
                 body: commentBody
               });
-      
-              // --- ADDED CODE START: Update the corresponding Azure DevOps work item ---
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
               const azdoOrg = process.env.AZDO_ORG;
               const azdoProject = process.env.AZDO_PROJECT;
-      
-              // For simplicity, we add the tag "GitHubCommented". (In production, you might merge with existing tags.)
               const patchCmd = `curl -s -u ":${azureToken}" -X PATCH "https://dev.azure.com/${azdoOrg}/${azdoProject}/_apis/wit/workitems/${workItemId}?api-version=7.1-preview.3" -H "Content-Type: application/json-patch+json" --data-binary "[{\\"op\\": \\"add\\", \\"path\\": \\"/fields/System.Tags\\", \\"value\\": \\"GitHubCommented\\"}]"`;
               console.log(`Executing command to update work item ${workItemId}: ${patchCmd}`);
               try {
@@ -143,7 +109,7 @@ jobs:
               } catch (err) {
                 console.error(`Error updating work item ${workItemId}:`, err.message);
               }
-              // --- ADDED CODE END ---
             }
       
 # Issue number is Hard Coded.
+            # issue_number: issueNumber, // Change in manual issue number.
