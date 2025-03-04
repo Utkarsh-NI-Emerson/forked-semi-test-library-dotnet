@@ -22,75 +22,68 @@ jobs:
             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
             const targetUser = "github-actions[bot]"; // Have to replace with the actual username (Github).
 
-            let latestRelease;
-            let previousRelease;
-            let previousReleaseDate;
+
+            ###===========================================================================================
+
+
+            let latestReleaseBranch = null;
+            let previousReleaseBranch = null;
+            let previousReleaseDate = new Date(0); // default fallback
 
             try {
-              // Attempt to fetch all releases (including drafts and pre-releases)
-              const releasesResponse = await github.rest.repos.listReleases({
+              // List all branches in the repository.
+              const branchesResponse = await github.rest.repos.listBranches({
                 owner,
                 repo,
                 per_page: 100,
               });
-              
-              if (releasesResponse.data.length >= 2) {
-                // Sort releases descending by creation date (most recent first)
-                const releases = releasesResponse.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                latestRelease = releases[0];
-                previousRelease = releases[1];
-                previousReleaseDate = new Date(previousRelease.created_at);
-                console.log("Latest release version:", latestRelease.tag_name);
-                console.log("Latest release created at:", latestRelease.created_at);
-                console.log("Previous release version:", previousRelease.tag_name);
-                console.log("Previous release created at:", previousRelease.created_at);
-              } else if (releasesResponse.data.length === 1) {
-                latestRelease = releasesResponse.data[0];
-                // Only one release available; fallback previousReleaseDate to epoch
-                previousReleaseDate = new Date(0);
-                console.log("Only one release found. Latest release version:", latestRelease.tag_name);
-              } else {
-                throw new Error("No releases found");
-              }
-            } catch (error) {
-              console.log("Error fetching releases; attempting fallback to tags. Error details:", error);
 
-              // Fallback: Use tags if no releases exist.
-              try {
-                const tagsResponse = await github.rest.repos.listTags({
-                  owner,
-                  repo,
-                  per_page: 100,
-                });
-                if (tagsResponse.data.length >= 2) {
-                  // Assume tags are returned in descending order (most recent first)
-                  const tags = tagsResponse.data;
-                  latestRelease = { tag_name: tags[0].name };
-                  
-                  // Get the commit details for the previous tag to determine its date.
-                  const previousTag = tags[1];
+              // Filter branches that start with "release/"
+              // Change to releases/ in actual code.
+              const releaseBranches = branchesResponse.data.filter(branch =>
+                branch.name.startsWith("release/")
+              );
+
+              if (releaseBranches.length === 0) {
+                console.log("No release branches found.");
+              } else {
+                // For each release branch, fetch its commit details to get the commit date.
+                const branchDetails = await Promise.all(releaseBranches.map(async branch => {
                   const commitResponse = await github.rest.repos.getCommit({
                     owner,
                     repo,
-                    ref: previousTag.commit.sha,
+                    ref: branch.commit.sha,
                   });
-                  previousReleaseDate = new Date(commitResponse.data.commit.author.date);
-                  
-                  console.log("Fallback to tags: Latest tag:", tags[0].name);
-                  console.log("Fallback to tags: Previous tag commit date:", previousReleaseDate);
-                } else if (tagsResponse.data.length === 1) {
-                  latestRelease = { tag_name: tagsResponse.data[0].name };
-                  previousReleaseDate = new Date(0);
-                  console.log("Fallback to tags: Only one tag found. Latest tag:", tagsResponse.data[0].name);
-                } else {
-                  throw new Error("No tags found");
+                  return {
+                    branchName: branch.name,
+                    commitDate: new Date(commitResponse.data.commit.author.date)
+                  };
+                }));
+
+                // Sort the branch details by commit date descending (most recent first)
+                branchDetails.sort((a, b) => b.commitDate - a.commitDate);
+
+                // The first branch is the latest release branch.
+                latestReleaseBranch = branchDetails[0];
+
+                // If there's at least two release branches, use the second as the previous.
+                if (branchDetails.length >= 2) {
+                  previousReleaseBranch = branchDetails[1];
+                  previousReleaseDate = previousReleaseBranch.commitDate;
                 }
-              } catch (tagError) {
-                console.log("Error fetching tags; defaulting previous release date to epoch start. Error details:", tagError);
-                previousReleaseDate = new Date(0);
+
+                console.log("Latest release branch:", latestReleaseBranch.branchName, "with commit date:", latestReleaseBranch.commitDate);
+                if (previousReleaseBranch) {
+                  console.log("Previous release branch:", previousReleaseBranch.branchName, "with commit date:", previousReleaseBranch.commitDate);
+                } else {
+                  console.log("Only one release branch found; no previous release branch available.");
+                }
               }
+            } catch (error) {
+              console.log("Error fetching release branch details; defaulting previous release date to epoch start. Error details:", error);
             }
 
+            ###===========================================================================================
 
             
             const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
