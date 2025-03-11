@@ -1,8 +1,7 @@
-name: Comment on Fixed Issues (Filtered by Release Date and Comment User)
+name: Comment on fixed issues about new release
 
 on:
   create:
-    # Trigger when a branch matching release/* is created.
     branches:
       - 'release/*'
 
@@ -16,116 +15,66 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const branchRef = context.ref;
-            // Changed branch extraction for release/* instead of releases/*
             const version = branchRef.replace('refs/heads/release/', '');
-            // Changed release link to point to the release/ branch
             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
-            const targetUser = "github-actions[bot]"; // Have to replace with the actual username (Github).
+            const targetUser = "github-actions[bot]";
 
-            //===========================================================================================
+            // Define the trigger comment text to look for.
+            const triggerText = "The corresponding work item has been closed. The fix should be available in the next release.";
 
-            let latestReleaseBranch = null;
-            let previousReleaseBranch = null;
-            let previousReleaseDate = new Date(0); // default fallback
+            // Define a regex to detect if a release comment is already present.
+            // The regex is designed to match the full release comment structure,
+            // allowing dynamic parts like the version number and the release link.
+            const releaseCommentRegex = new RegExp(
+              `^The fix for this issue is included in version\\s+[\\w\\.\\-]+,\\s+which has now been released \\(\\[v[\\w\\.\\-]+\\]\\([^)]*\\)\\)\\.\\s+This issue will auto close within the next 30 days\\.$`
+            );
 
-            try {
-              // List all branches in the repository.
-              const branchesResponse = await github.rest.repos.listBranches({
-                owner,
-                repo,
-                per_page: 100,
-              });
-
-              // Filter branches that start with "release/"
-              // Change to releases/ in actual code.
-              const releaseBranches = branchesResponse.data.filter(branch =>
-                branch.name.startsWith("release/")
-              );
-
-              if (releaseBranches.length === 0) {
-                console.log("No release branches found.");
-              } else {
-                // For each release branch, fetch its commit details to get the commit date.
-                const branchDetails = await Promise.all(releaseBranches.map(async branch => {
-                  const commitResponse = await github.rest.repos.getCommit({
-                    owner,
-                    repo,
-                    ref: branch.commit.sha,
-                  });
-                  return {
-                    branchName: branch.name,
-                    commitDate: new Date(commitResponse.data.commit.author.date)
-                  };
-                }));
-
-                // Sort the branch details by commit date descending (most recent first)
-                branchDetails.sort((a, b) => b.commitDate - a.commitDate);
-
-                // The first branch is the latest release branch.
-                latestReleaseBranch = branchDetails[0];
-
-                // If there's at least two release branches, use the second as the previous.
-                if (branchDetails.length >= 2) {
-                  previousReleaseBranch = branchDetails[1];
-                  previousReleaseDate = previousReleaseBranch.commitDate;
-                }
-
-                console.log("Latest release branch:", latestReleaseBranch.branchName, "with commit date:", latestReleaseBranch.commitDate);
-                if (previousReleaseBranch) {
-                  console.log("Previous release branch:", previousReleaseBranch.branchName, "with commit date:", previousReleaseBranch.commitDate);
-                } else {
-                  console.log("Only one release branch found; no previous release branch available.");
-                }
-              }
-            } catch (error) {
-              console.log("Error fetching release branch details; defaulting previous release date to epoch start. Error details:", error);
-            }
-
-            //===========================================================================================
-
-            const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
+            // Construct search query to find issues with the trigger comment in them.
+            const searchQuery = `repo:${owner}/${repo} is:issue "${triggerText}" in:comments`;
             console.log("Search query:", searchQuery);
 
+            // Retrieve all issues matching the search query.
             const issues = await github.paginate(github.rest.search.issuesAndPullRequests, {
               q: searchQuery,
               per_page: 100,
             });
-            console.log(`Found ${issues.length} issues with matching comment.`);
+            console.log(`Found ${issues.length} issues with matching trigger comment.`);
 
+            // Process each issue
             for (const issue of issues) {
+              // Retrieve all comments for the issue.
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,
                 repo,
                 issue_number: issue.number,
                 per_page: 100,
               });
-                
-              let eligible = false;
-              for (const comment of comments) {
-                console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
-                const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
-                const isFromTargetUser = comment.user.login === targetUser;
-
-                const createdAfter = new Date(comment.created_at) > previousReleaseDate;
-                console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}, Created after last release? ${createdAfter}`);
-                  
-                if (containsText && isFromTargetUser && createdAfter) {
-                  eligible = true;
-                  break;
-                }
-              }
-                
-              if (eligible) {
+              //issue_number: issue.number,
+              // Change hard-coded issue number.
+              
+              // Check if the trigger comment is present and posted by the target user.
+              const hasTriggerComment = comments.some(comment =>
+                comment.body.includes(triggerText) &&
+                comment.user.login === targetUser
+              );
+              
+              // Use the regex to check if a release comment (matching the full expected structure) exists.
+              const hasReleaseComment = comments.some(comment =>
+                releaseCommentRegex.test(comment.body)
+              );
+              
+              // If the trigger comment exists and no matching release comment is present, add the release comment.
+              if (hasTriggerComment && !hasReleaseComment) {
                 const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([v${version}](${releaseLink})). This issue will auto close within the next 30 days.`;
                 await github.rest.issues.createComment({
                   owner,
                   repo,
-                  issue_number: 138,
+                  issue_number: issue.number,
                   body: commentBody,
                 });
                 console.log(`Comment added to issue #${issue.number}`);
               } else {
-                console.log(`Issue #${issue.number} is not eligible; skipping.`);
+                console.log(`Issue #${issue.number} either does not have the trigger comment or already has a release comment; skipping.`);
               }
             }
 
@@ -134,11 +83,10 @@ jobs:
 
 
 
-# name: Comment on Fixed Issues
+# name: Comment on fixed issues about new release
 
 # on:
 #   create:
-#     # Trigger when a branch matching releases/* is created. See in forked repo its release/* and not releases/*
 #     branches:
 #       - 'releases/*'
 
@@ -154,95 +102,53 @@ jobs:
 #             const branchRef = context.ref;
 #             const version = branchRef.replace('refs/heads/releases/', '');
 #             const releaseLink = `https://github.com/${owner}/${repo}/tree/releases/${version}`;
-#             const targetUser = "github-actions";
+#             const targetUser = "github-actions[bot]";
 
-              # //===========================================================================================
+#             // Define the trigger comment text to look for.
+#             const triggerText = "The corresponding work item has been closed. The fix should be available in the next release.";
 
-              # let latestReleaseBranch = null;
-              # let previousReleaseBranch = null;
-              # let previousReleaseDate = new Date(0); // default fallback
+#             // Define a regex to detect if a release comment is already present.
+#             // The regex is designed to match the full release comment structure,
+#             // allowing dynamic parts like the version number and the release link.
+#             const releaseCommentRegex = new RegExp(
+#               `^The fix for this issue is included in version\\s+[\\w\\.\\-]+,\\s+which has now been released \\(\\[v[\\w\\.\\-]+\\]\\([^)]*\\)\\)\\.\\s+This issue will auto close within the next 30 days\\.$`
+#             );
 
-              # try {
-              #   const branchesResponse = await github.rest.repos.listBranches({
-              #     owner,
-              #     repo,
-              #     per_page: 100,
-              #   });
-
-              #   const releaseBranches = branchesResponse.data.filter(branch =>
-              #     branch.name.startsWith("releases/")
-              #   );
-
-              #   if (releaseBranches.length === 0) {
-              #     console.log("No release branches found.");
-              #   } else {
-              #     const branchDetails = await Promise.all(releaseBranches.map(async branch => {
-              #       const commitResponse = await github.rest.repos.getCommit({
-              #         owner,
-              #         repo,
-              #         ref: branch.commit.sha,
-              #       });
-              #       return {
-              #         branchName: branch.name,
-              #         commitDate: new Date(commitResponse.data.commit.author.date)
-              #       };
-              #     }));
-
-              #     branchDetails.sort((a, b) => b.commitDate - a.commitDate);
-              #     latestReleaseBranch = branchDetails[0];
-
-              #     if (branchDetails.length >= 2) {
-              #       previousReleaseBranch = branchDetails[1];
-              #       previousReleaseDate = previousReleaseBranch.commitDate;
-              #     }
-
-              #     console.log("Latest release branch:", latestReleaseBranch.branchName, "with commit date:", latestReleaseBranch.commitDate);
-              #     if (previousReleaseBranch) {
-              #       console.log("Previous release branch:", previousReleaseBranch.branchName, "with commit date:", previousReleaseBranch.commitDate);
-              #     } else {
-              #       console.log("Only one release branch found; no previous release branch available.");
-              #     }
-              #   }
-              # } catch (error) {
-              #   console.log("Error fetching release branch details; defaulting previous release date to epoch start. Error details:", error);
-              # }
-
-              # //===========================================================================================
-            
-#             const searchQuery = `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`;
+#             // Construct search query to find issues with the trigger comment in them.
+#             const searchQuery = `repo:${owner}/${repo} is:issue "${triggerText}" in:comments`;
 #             console.log("Search query:", searchQuery);
 
+#             // Retrieve all issues matching the search query.
 #             const issues = await github.paginate(github.rest.search.issuesAndPullRequests, {
-#               q: `repo:${owner}/${repo} is:issue "The corresponding work item has been closed. The fix should be available in the next release." in:comments`,
+#               q: searchQuery,
 #               per_page: 100,
 #             });
-#             console.log(`Found ${issues.length} issues with matching comment.`);
+#             console.log(`Found ${issues.length} issues with matching trigger comment.`);
 
+#             // Process each issue
 #             for (const issue of issues) {
+#               // Retrieve all comments for the issue.
 #               const comments = await github.paginate(github.rest.issues.listComments, {
-#               owner,
-#               repo,
-#               issue_number: issue.number,
-#               per_page: 100,
+#                 owner,
+#                 repo,
+#                 issue_number: issue.number,
+#                 per_page: 100,
 #               });
-                
-#               let eligible = false;
-#               for (const comment of comments) {
-#                 console.log(`Evaluating comment ${comment.id} on issue #${issue.number}`);
-#                 const containsText = comment.body.includes("The corresponding work item has been closed. The fix should be available in the next release.");
-#                 const isFromTargetUser = comment.user.login === targetUser;
-
-#                 const createdAfter = new Date(comment.created_at) > previousReleaseDate;
-#                 console.log(`Comment ${comment.id}: Contains required text? ${containsText}, Is from target user? ${isFromTargetUser}, Created after last release? ${createdAfter}`);
-                  
-#                 if (containsText && isFromTargetUser && createdAfter) {
-#                   eligible = true;
-#                   break;
-#                 }
-#               }
-                
-#               if (eligible) {
-#                 const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([click here](${releaseLink})). This issue will auto close within the next 30 days.`;
+              
+#               // Check if the trigger comment is present and posted by the target user.
+#               const hasTriggerComment = comments.some(comment =>
+#                 comment.body.includes(triggerText) &&
+#                 comment.user.login === targetUser
+#               );
+              
+#               // Use the regex to check if a release comment (matching the full expected structure) exists.
+#               const hasReleaseComment = comments.some(comment =>
+#                 releaseCommentRegex.test(comment.body)
+#               );
+              
+#               // If the trigger comment exists and no matching release comment is present, add the release comment.
+#               if (hasTriggerComment && !hasReleaseComment) {
+#                 const commentBody = `The fix for this issue is included in version ${version}, which has now been released ([v${version}](${releaseLink})). This issue will auto close within the next 30 days.`;
 #                 await github.rest.issues.createComment({
 #                   owner,
 #                   repo,
@@ -251,6 +157,6 @@ jobs:
 #                 });
 #                 console.log(`Comment added to issue #${issue.number}`);
 #               } else {
-#                 console.log(`Issue #${issue.number} is not eligible; skipping.`);
+#                 console.log(`Issue #${issue.number} either does not have the trigger comment or already has a release comment; skipping.`);
 #               }
 #             }
