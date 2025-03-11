@@ -26,7 +26,7 @@ jobs:
             // The regex is designed to match the full release comment structure,
             // allowing dynamic parts like the version number and the release link.
             const releaseCommentRegex = new RegExp(
-              `^The fix for this issue is included in version\\s+[\\w\\.\\-]+,\\s+which has now been released \\(\\[v[\\w\\.\\-]+\\]\\([^)]*\\)\\)\\.\\s+This issue will auto close within the next 30 days\\.$`
+              `^The fix for this issue is included in version [\w.-]+, which has now been released (.+)\. This issue will auto close within the next 30 days\.$`
             );
 
             // Construct search query to find issues with the trigger comment in them.
@@ -49,8 +49,6 @@ jobs:
                 issue_number: issue.number,
                 per_page: 100,
               });
-              //issue_number: issue.number,
-              // Change hard-coded issue number.
               
               // Check if the trigger comment is present and posted by the target user.
               const hasTriggerComment = comments.some(comment =>
