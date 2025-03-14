@@ -19,12 +19,11 @@ jobs:
             const releaseLink = `https://github.com/${owner}/${repo}/tree/release/${version}`;
             const targetUser = "github-actions[bot]";
             const triggerText = "The corresponding work item has been closed. The fix should be available in the next release.";
+
+            // CHANGED: Updated regex to make the "auto-close" sentence optional
             const releaseCommentRegex = new RegExp(
-              `^The fix for this issue is included in the [0-9.]+ release, which is now available \\(\\[v[0-9.]+\\]\\(.+\\)\\)\\. This issue will automatically close within the next 30 days\\.$`
+              `^The fix for this issue is included in the [0-9.]+ release, which is now available \\(\\[v[0-9.]+\\]\\(.+\\)\\)\\.(?: This issue will automatically close within the next 30 days\\.)?$`
             );
-
-
-            //The fix for this issue is included in the ${version} release, which is now available ([v${version}](${releaseLink})). This issue will automatically close within the next 30 days.
 
             const searchQuery = `repo:${owner}/${repo} is:issue "${triggerText}" in:comments`;
             console.log("Search query:", searchQuery);
@@ -53,7 +52,11 @@ jobs:
               );
 
               if (hasTriggerComment && !hasReleaseComment) {
-                const commentBody = `The fix for this issue is included in the ${version} release, which is now available ([v${version}](${releaseLink})). This issue will automatically close within the next 30 days.`;
+                // CHANGED: Check issue state before constructing the comment
+                const commentBody = issue.state === 'closed'
+                  ? `The fix for this issue is included in the ${version} release, which is now available ([v${version}](${releaseLink})).`
+                  : `The fix for this issue is included in the ${version} release, which is now available ([v${version}](${releaseLink})). This issue will automatically close within the next 30 days.`;
+
                 await github.rest.issues.createComment({
                   owner,
                   repo,
@@ -65,5 +68,3 @@ jobs:
                 console.log(`Issue #${issue.number} either does not have the trigger comment or already has a release comment; skipping.`);
               }
             }
-
-            //The fix for this issue is included in the ${version} release, which is now available ([v${version}](${releaseLink})). This issue will automatically close within the next 30 days.
