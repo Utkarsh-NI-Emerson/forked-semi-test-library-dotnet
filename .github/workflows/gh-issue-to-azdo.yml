@@ -48,10 +48,9 @@ jobs:
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           
-          # ***** UPDATED CODE: Convert full Markdown to HTML using Python Markdown *****
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown; print(markdown.markdown(sys.stdin.read()))" <<< "$ISSUE_BODY")
-          # *********************************************************************
-
+          # Convert full Markdown to HTML and remove any inline image tags
+          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
+          
           # Build the base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
@@ -142,9 +141,8 @@ jobs:
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
           
-          # ***** UPDATED CODE: Convert full Markdown to HTML using Python Markdown for Teams *****
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown; print(markdown.markdown(sys.stdin.read()))" <<< "$ISSUE_BODY")
-          # **********************************************************************************************
+          # Convert Markdown to HTML and remove any inline image tags for Teams
+          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
           
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
@@ -161,7 +159,8 @@ jobs:
           }'
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
-          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL")
+          echo "Curl response: $RESPONSE"
 
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
