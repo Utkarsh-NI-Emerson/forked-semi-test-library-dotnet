@@ -62,13 +62,13 @@ jobs:
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
 
-          # ***** ADDED CODE: Add 'Reported In' field for Bug work items *****
+          # # ***** ADDED CODE: Add 'Reported In' field for Bug work items *****
 
-          if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
-            PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
-          fi
-          
-          # ******************************************************************
+          # if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
+          #   PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
+          # fi
+
+          # # ******************************************************************
 
           echo "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
