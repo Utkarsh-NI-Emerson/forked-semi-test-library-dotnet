@@ -41,19 +41,25 @@ jobs:
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
+          
+          # ***** CHANGED CODE: Convert markdown newlines to HTML <br> tags *****
+          FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ***************************************************************************
+
           # Build the base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
               <p><strong>ISSUE DETAILS:</strong></p>
               <p>Issue Number: $ISSUE_NUMBER</p>
-              <p>$ISSUE_BODY</p>
+              <p>$FORMATTED_ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
             </div>" \
             --arg areaPath "$AZDO_AREA_PATH" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description},
               {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
+          
           # Adding additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
@@ -62,13 +68,10 @@ jobs:
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
 
-          # # ***** ADDED CODE: Add 'Reported In' field for Bug work items *****
-
-          # if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
-          #   PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
-          # fi
-
-          # # ******************************************************************
+          # ADDED CODE: Add 'Reported In' field for Bug work items
+          if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
+            PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
+          fi
 
           echo "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
@@ -132,6 +135,11 @@ jobs:
         run: |
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
+          
+          # ***** CHANGED CODE: Convert markdown newlines to HTML <br> tags for Teams *****
+          FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ***************************************************************************
+
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
             "@type": "MessageCard",
@@ -140,7 +148,7 @@ jobs:
             "summary": "New GitHub Issue and Work Item Created",
             "sections": [
               {
-                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')<br><br>**Title:** '"$ISSUE_TITLE"' <br>**Description:** '"$ISSUE_BODY"' <br>**Issue URL:** [View Issue]('"$ISSUE_URL"') <br>**Work Item ID:** '"$WORK_ITEM_ID"' <br>**Work Item Type:** '"$WORK_ITEM_TYPE"' <br>**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
+                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')<br><br>**Title:** '"$ISSUE_TITLE"' <br>**Description:** '"$FORMATTED_ISSUE_BODY"' <br>**Issue URL:** [View Issue]('"$ISSUE_URL"') <br>**Work Item ID:** '"$WORK_ITEM_ID"' <br>**Work Item Type:** '"$WORK_ITEM_TYPE"' <br>**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
                 "markdown": true
               }
             ]
