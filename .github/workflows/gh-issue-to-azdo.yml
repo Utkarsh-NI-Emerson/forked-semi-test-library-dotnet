@@ -42,12 +42,12 @@ jobs:
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           
-          # ***** CHANGED CODE: Convert markdown newlines to HTML <br> tags and bold text to <strong> tags *****
+          # ***** UPDATED CODE: First convert bold markdown to HTML <strong> tags, then convert newlines to <br> tags *****
           FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
-            | sed ':a;N;$!ba;s/\n/<br>/g' \
-            | sed -E 's/\*\*(.*?)\*\*/<strong>\1<\/strong>/g')
-          # ***************************************************************************************
-
+            | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
+            | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ***************************************************************************************************
+          
           # Build the base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
@@ -138,12 +138,12 @@ jobs:
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
           
-          # ***** CHANGED CODE: Convert markdown newlines to HTML <br> tags and bold text to <strong> tags for Teams *****
+          # ***** UPDATED CODE: Convert bold markdown to <strong> tags then newlines to <br> tags for Teams *****
           FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
-            | sed ':a;N;$!ba;s/\n/<br>/g' \
-            | sed -E 's/\*\*(.*?)\*\*/<strong>\1<\/strong>/g')
-          # *****************************************************************************************************
-
+            | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
+            | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ********************************************************************************************
+          
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
             "@type": "MessageCard",
