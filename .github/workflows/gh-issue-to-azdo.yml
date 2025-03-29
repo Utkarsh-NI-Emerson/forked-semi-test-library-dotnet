@@ -8,6 +8,12 @@ jobs:
   handle-new-issue:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Python Markdown
+        run: pip install markdown
+              
       - name: Determine Work Item Type
         id: determine-work-item-type
         uses: actions/github-script@v6
@@ -43,9 +49,9 @@ jobs:
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           
           # ***** UPDATED CODE: First convert bold markdown to HTML <strong> tags, then convert newlines to <br> tags *****
-          FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
-            | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
-            | sed ':a;N;$!ba;s/\n/<br>/g')
+
+          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
+
           # ***************************************************************************************************
           
           # Build the base work item payload
