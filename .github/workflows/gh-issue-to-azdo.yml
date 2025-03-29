@@ -8,12 +8,6 @@ jobs:
   handle-new-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install Python Markdown
-        run: pip install markdown
-
       - name: Determine Work Item Type
         id: determine-work-item-type
         uses: actions/github-script@v6
@@ -48,8 +42,11 @@ jobs:
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           
-          # Convert full Markdown to HTML and remove any inline image tags
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
+          # ***** UPDATED CODE: First convert bold markdown to HTML <strong> tags, then convert newlines to <br> tags *****
+          FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
+            | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
+            | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ***************************************************************************************************
           
           # Build the base work item payload
           PATCH_DOC=$(jq -n \
@@ -72,12 +69,10 @@ jobs:
               {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
-
-          # Add 'Reported In' field for Bug work items
+          # ADDED CODE: Add 'Reported In' field for Bug work items
           if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
           fi
-
           echo "$PATCH_DOC" > patch.json
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
@@ -94,7 +89,6 @@ jobs:
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
-
       - name: Link GitHub Issue to Azure DevOps Work Item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
@@ -126,7 +120,6 @@ jobs:
             -H "Content-Type: application/json-patch+json" \
             --data @patch-relation.json \
             "$WORK_ITEM_API_URL")
-
       - name: Notify NI Developers on Teams
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
@@ -141,8 +134,11 @@ jobs:
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
           
-          # Convert Markdown to HTML and remove any inline image tags for Teams
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
+          # ***** UPDATED CODE: Convert bold markdown to <strong> tags then newlines to <br> tags for Teams *****
+          FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
+            | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
+            | sed ':a;N;$!ba;s/\n/<br>/g')
+          # ********************************************************************************************
           
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
@@ -152,16 +148,14 @@ jobs:
             "summary": "New GitHub Issue and Work Item Created",
             "sections": [
               {
-                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')<br><br><strong>Title:</strong> '"$ISSUE_TITLE"' <br><strong>Description:</strong> '"$FORMATTED_ISSUE_BODY"' <br><strong>Issue URL:</strong> [View Issue]('"$ISSUE_URL"') <br><strong>Work Item ID:</strong> '"$WORK_ITEM_ID"' <br><strong>Work Item Type:</strong> '"$WORK_ITEM_TYPE"' <br><strong>Work Item URL:</strong> [View Work Item]('"$WORK_ITEM_URL"')",
+                "text": "# New GitHub Issue: '"$ISSUE_TITLE"' (#'"$ISSUE_NUMBER"')<br><br>**Title:** '"$ISSUE_TITLE"' <br>**Description:** '"$FORMATTED_ISSUE_BODY"' <br>**Issue URL:** [View Issue]('"$ISSUE_URL"') <br>**Work Item ID:** '"$WORK_ITEM_ID"' <br>**Work Item Type:** '"$WORK_ITEM_TYPE"' <br>**Work Item URL:** [View Work Item]('"$WORK_ITEM_URL"')",
                 "markdown": true
               }
             ]
           }'
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\n" -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL")
-          echo "Curl response: $RESPONSE"
-
+          curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
