@@ -57,7 +57,7 @@ jobs:
               <p>Issue Number: $ISSUE_NUMBER</p>
               <p>$FORMATTED_ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
-              <p style="color:red;"><strong>NOTE:</strong> Please ensure that both, the work item and the associated issue are closed simultaneously <u>if no action is required</u> for the work item.</p>
+              <p style=\"color:red;\"><strong>NOTE:</strong> Please ensure that both, the work item and the associated issue are closed simultaneously <u>if no action is required</u> for the work item.</p>
             </div>" \
             --arg areaPath "$AZDO_AREA_PATH" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
