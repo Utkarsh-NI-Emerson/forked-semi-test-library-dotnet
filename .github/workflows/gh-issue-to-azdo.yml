@@ -13,7 +13,7 @@ jobs:
 
       - name: Install Python Markdown
         run: pip install markdown
-              
+
       - name: Determine Work Item Type
         id: determine-work-item-type
         uses: actions/github-script@v6
@@ -47,14 +47,9 @@ jobs:
           WORK_ITEM_TYPE: ${{ steps.determine-work-item-type.outputs.result }}
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
-          
-          # ***** UPDATED CODE: First convert bold markdown to HTML <strong> tags, then convert newlines to <br> tags *****
 
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
-
-          # ***************************************************************************************************
+          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")          
           
-          # Build the base work item payload
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
@@ -62,12 +57,12 @@ jobs:
               <p>Issue Number: $ISSUE_NUMBER</p>
               <p>$FORMATTED_ISSUE_BODY</p>
               <p><a href=\"$ISSUE_URL\">View Issue on GitHub</a></p>
+              <p style="color:red;"><strong>NOTE:</strong> Please ensure that both, the work item and the associated issue are closed simultaneously <u>if no action is required</u> for the work item.</p>
             </div>" \
             --arg areaPath "$AZDO_AREA_PATH" \
             '[{"op": "add", "path": "/fields/System.Title", "value": $title},
               {"op": "add", "path": "/fields/System.Description", "value": $description},
-              {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')
-          
+              {"op": "add", "path": "/fields/System.AreaPath", "value": $areaPath}]')          
           # Adding additional custom fields if the work item type is "Customer Escalation"
           if [[ "$WORK_ITEM_TYPE" == "Customer%20Escalation" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + 
@@ -75,7 +70,7 @@ jobs:
               {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
           fi
-          # ADDED CODE: Add 'Reported In' field for Bug work items
+          # Adding additional custom fields if the work item type is "Bug"
           if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
             PATCH_DOC=$(echo "$PATCH_DOC" | jq '. + [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": "STS Software Bundle: 25.5"}]')
           fi
@@ -95,6 +90,7 @@ jobs:
           WORK_ITEM_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_workitems/edit/$WORK_ITEM_ID"
           echo "::set-output name=work_item_id::$WORK_ITEM_ID"
           echo "::set-output name=work_item_url::$WORK_ITEM_URL"
+
       - name: Link GitHub Issue to Azure DevOps Work Item
         env:
           AZDO_ORG: ${{ secrets.AZDO_ORG }}
@@ -126,6 +122,7 @@ jobs:
             -H "Content-Type: application/json-patch+json" \
             --data @patch-relation.json \
             "$WORK_ITEM_API_URL")
+
       - name: Notify NI Developers on Teams
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
@@ -140,11 +137,9 @@ jobs:
           echo "Decoding work item type..."
           WORK_ITEM_TYPE=$(python -c "import urllib.parse; print(urllib.parse.unquote('''$WORK_ITEM_TYPE_ENCODED'''))")
           
-          # ***** UPDATED CODE: Convert bold markdown to <strong> tags then newlines to <br> tags for Teams *****
           FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
             | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
             | sed ':a;N;$!ba;s/\n/<br>/g')
-          # ********************************************************************************************
           
           echo "Notifying NI developers on Teams about the new issue and work item creation..."
           teams_payload='{
@@ -162,6 +157,7 @@ jobs:
           echo "$teams_payload" > teams_payload.json
           cat teams_payload.json
           curl -H "Content-Type: application/json" -d @teams_payload.json "$TEAMS_WEBHOOK_URL"
+
       - name: Add comment on GitHub Issue
         uses: actions/github-script@v6
         with:
