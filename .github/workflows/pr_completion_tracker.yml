@@ -101,7 +101,7 @@ jobs:
                 const issue = await github.rest.issues.get({
                   owner,
                   repo,
-                  issue_number: 160
+                  issue_number: issueNumber
                 });
       
                 if (issue.data.state === "closed") {
@@ -116,7 +116,7 @@ jobs:
                 await github.rest.issues.createComment({
                   owner,
                   repo,
-                  issue_number: 160,
+                  issue_number: issueNumber,
                   body: commentBody
                 });
       
@@ -125,11 +125,11 @@ jobs:
                 const azdoProject = process.env.AZDO_PROJECT;
                 const patchCmd = `curl -s -u ":${azureToken}" -X PATCH "https://dev.azure.com/${azdoOrg}/${azdoProject}/_apis/wit/workitems/${workItemId}?api-version=7.1-preview.3" -H "Content-Type: application/json-patch+json" --data-binary "[{\\"op\\": \\"add\\", \\"path\\": \\"/fields/System.Tags\\", \\"value\\": \\"GitHubCommented\\"}]"`;
       
-                console.log(`Executing command to update work item ${workItemId}: ${patchCmd}`);
+                console.log(`Executing command to update work item ${workItemId}.`);
       
                 try {
                   const updateOutput = execSync(patchCmd, { encoding: 'utf-8' });
-                  console.log(`Update output for work item ${workItemId}: ${updateOutput}`);
+                  console.log(`Update output for work item ${workItemId}.`);
                 } catch (err) {
                   console.error(`Error updating work item ${workItemId}:`, err.message);
                 }
