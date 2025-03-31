@@ -99,7 +99,8 @@ jobs:
               const issue = await github.rest.issues.get({
                 owner,
                 repo,
-                issue_number: issueNumber
+                issue_number: 160
+                # issue_number: issueNumber
               });
 
               if (issue.data.state === "closed") {
@@ -114,7 +115,8 @@ jobs:
               await github.rest.issues.createComment({
                 owner,
                 repo,
-                issue_number: issueNumber,
+                issue_number: 160,
+                # issue_number: issueNumber,
                 body: commentBody
               });
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
