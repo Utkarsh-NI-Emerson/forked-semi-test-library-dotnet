@@ -91,7 +91,9 @@ jobs:
             const processList = fs.readFileSync('process_list.txt', 'utf8').trim().split('\n');
             
             for (const line of processList) {
-              const [workItemId, issueNumber] = line.split(',');
+              # const [workItemId, issueNumber] = line.split(',');
+              const [workItemId, 160] = line.split(',');
+
 
               //================= CHANGED BLOCK START =================
               console.log(`Checking status of GitHub Issue #${issueNumber} before commenting...`);
@@ -99,8 +101,7 @@ jobs:
               const issue = await github.rest.issues.get({
                 owner,
                 repo,
-                issue_number: 160
-                # issue_number: issueNumber
+                issue_number: issueNumber
               });
 
               if (issue.data.state === "closed") {
@@ -115,8 +116,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner,
                 repo,
-                issue_number: 160,
-                # issue_number: issueNumber,
+                issue_number: issueNumber,
                 body: commentBody
               });
               const azureToken = process.env.AZURE_DEVOPS_TOKEN;
