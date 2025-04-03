@@ -156,7 +156,7 @@ jobs:
             "summary": "New GitHub Issue and Work Item Created",
             "sections": [
               {
-                "text": "<strong># New GitHub Issue (#'"$ISSUE_NUMBER"'): '"$ISSUE_TITLE"'</strong> <br><br><strong>**Title:**</strong> '"$ISSUE_TITLE"'  <br><strong>**Issue URL:**</strong> [View Issue]('"$ISSUE_URL"') <br><strong>**Work Item ID:**</strong> '"$WORK_ITEM_ID"' <br><strong>**Work Item Type:**</strong> '"$WORK_ITEM_TYPE"' <br><strong>**Work Item URL:**</strong> [View Work Item]('"$WORK_ITEM_URL"') <br><br><strong>**Description:**</strong> '"$FORMATTED_ISSUE_BODY"' ",
+                "text": "<strong># New GitHub Issue ('"$ISSUE_NUMBER"'): '"$ISSUE_TITLE"'</strong> <br><br><strong>**Title:**</strong> '"$ISSUE_TITLE"'  <br><strong>**Issue URL:**</strong> [View Issue]('"$ISSUE_URL"') <br><strong>**Work Item ID:**</strong> '"$WORK_ITEM_ID"' <br><strong>**Work Item Type:**</strong> '"$WORK_ITEM_TYPE"' <br><strong>**Work Item URL:**</strong> [View Work Item]('"$WORK_ITEM_URL"') <br><br><strong>**Description:**</strong> '"$FORMATTED_ISSUE_BODY"' ",
                 "markdown": true
               }
             ]
