@@ -48,16 +48,7 @@ jobs:
         run: |
           echo "Creating Azure DevOps work item for GitHub Issue: $ISSUE_TITLE"
           # Build the base work item payload
-          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")          
-          STS_VERSION=$(echo "$ISSUE_BODY" | grep -oP '(?<=STS Software Version )\d+\.\d+(\.\w+)?' | head -n 1 | tr -d '\r')
-          # Check if STS_VERSION matches expected format
-          if [[ -n "$STS_VERSION" ]]; then
-            REPORTED_IN="STS Software Bundle $STS_VERSION"
-          else
-            REPORTED_IN="STS Software Bundle"
-          fi
-          echo "Extracted STS Software Version: $STS_VERSION"
-          echo "Final ReportedIn value: $REPORTED_IN"
+          FORMATTED_ISSUE_BODY=$(python -c "import sys, markdown, re; html = markdown.markdown(sys.stdin.read()); print(re.sub(r'<img[^>]*>', '', html))" <<< "$ISSUE_BODY")
           PATCH_DOC=$(jq -n \
             --arg title "GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE" \
             --arg description "<div>
@@ -81,12 +72,23 @@ jobs:
           fi              
           # Adding additional custom fields if the work item type is "Bug"
           if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
+            STS_VERSION=$(echo "$ISSUE_BODY" | grep -oP '(?<=STS Software Version )\d+\.\d+(\.\w+)?' | head -n 1 | tr -d '\r')
+            # Check if STS_VERSION matches expected format
+            if [[ -n "$STS_VERSION" ]]; then
+              REPORTED_IN="STS Software Bundle $STS_VERSION"
+            else
+              REPORTED_IN="STS Software Bundle"
+            fi
+            echo "Extracted STS Software Version: $STS_VERSION"
+            echo "Final ReportedIn value: $REPORTED_IN"
             PATCH_DOC=$(echo "$PATCH_DOC" | jq --arg reportedIn "$REPORTED_IN" '. + 
               [{"op": "add", "path": "/fields/Custom.ReportedIn", "value": $reportedIn}]')
           fi
           echo "$PATCH_DOC" > patch.json
+
           WORK_ITEM_API_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/\$${WORK_ITEM_TYPE}?api-version=6.0"
           echo "Work Item API URL: $WORK_ITEM_API_URL"
+          
           RESPONSE=$(curl -s -u :$AZURE_DEVOPS_TOKEN \
             -X POST \
             -H "Content-Type: application/json-patch+json" \
