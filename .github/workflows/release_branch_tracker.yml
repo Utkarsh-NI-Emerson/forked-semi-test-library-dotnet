@@ -7,7 +7,7 @@ on:
 
 jobs:
   comment-on-issues:
-    if: startsWith(github.ref, 'refs/heads/release/')  # <-- Added this line to ensure the branch starts with "release/"
+    if: startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     steps:
       - name: Process issues for new release
