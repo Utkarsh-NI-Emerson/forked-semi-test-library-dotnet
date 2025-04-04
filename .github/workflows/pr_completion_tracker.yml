@@ -57,7 +57,6 @@ jobs:
               echo "Work Item $id already has 'GitHubCommented' tag. Skipping."
               continue
             fi
-
             #================ New filter: Check for 'Comment on GitHub' tag =================
             if ! echo "$EXISTING_TAGS" | grep -q "Comment on GitHub"; then
               echo "Work Item $id does not have 'Comment on GitHub' tag. Skipping."
@@ -131,27 +130,6 @@ jobs:
                 const azureToken = process.env.AZURE_DEVOPS_TOKEN;
                 const azdoOrg = process.env.AZDO_ORG;
                 const azdoProject = process.env.AZDO_PROJECT;
-                
-                //================ Changed block start =================
-                // Retrieve current work item details to update tags
-                const getTagsCmd = `curl -s -u ":${azureToken}" -X GET "https://dev.azure.com/${azdoOrg}/${azdoProject}/_apis/wit/workitems/${workItemId}?api-version=7.1-preview.2"`;
-                let wiDetails;
-                try {
-                  wiDetails = JSON.parse(execSync(getTagsCmd, { encoding: 'utf-8' }));
-                } catch (err) {
-                  console.error(`Error retrieving work item ${workItemId}:`, err.message);
-                  continue;
-                }
-                const currentTags = wiDetails.fields["System.Tags"] || "";
-                // Remove "Comment on GitHub" tag if present and preserve other tags
-                let newTags = currentTags.split(";")
-                  .map(t => t.trim())
-                  .filter(t => t && t !== "Comment on GitHub");
-                // Append "GitHubCommented" tag
-                newTags.push("GitHubCommented");
-                newTags = newTags.join("; ");
-                //================ Changed block end =================
-                
                 const patchCmd = `curl -s -u ":${azureToken}" -X PATCH "https://dev.azure.com/${azdoOrg}/${azdoProject}/_apis/wit/workitems/${workItemId}?api-version=7.1-preview.3" -H "Content-Type: application/json-patch+json" --data-binary "[{\\"op\\": \\"add\\", \\"path\\": \\"/fields/System.Tags\\", \\"value\\": \\"GitHubCommented\\"}]"`;
       
                 console.log(`Executing command to update work item ${workItemId}.`);
