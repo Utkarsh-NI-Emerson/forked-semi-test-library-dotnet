@@ -69,10 +69,10 @@ jobs:
               [{"op": "add", "path": "/fields/Custom.EscalationSeverity", "value": "2 - Medium (SLA = 3 Business days)"},
               {"op": "add", "path": "/fields/Custom.Requestor", "value": "Semi BU"},
               {"op": "add", "path": "/fields/Custom.BUAffinity", "value": "Semi/Elec"}]')
-          fi              
+          fi
           # Adding additional custom fields if the work item type is "Bug"
           if [[ "$WORK_ITEM_TYPE" == "Bug" ]]; then
-            STS_VERSION=$(echo "$ISSUE_BODY" | grep -oP '(?<=STS Software Version )\d+\.\d+(\.\w+)?' | head -n 1 | tr -d '\r')
+            STS_VERSION=$(echo "$ISSUE_BODY" | sed -n '/System Setup/,$p' | grep -oP '(?<=STS Software Version )\d+\.\d+(\.\w+)?' | head -n 1 | tr -d '\r')
             # Check if STS_VERSION matches expected format
             if [[ -n "$STS_VERSION" ]]; then
               REPORTED_IN="STS Software Bundle $STS_VERSION"
