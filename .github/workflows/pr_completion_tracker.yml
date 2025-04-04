@@ -54,9 +54,17 @@ jobs:
               -X GET "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/wit/workitems/$id?\$expand=relations&api-version=7.1-preview.2")
             EXISTING_TAGS=$(echo "$WI_DETAILS" | jq -r '.fields["System.Tags"]')
             if echo "$EXISTING_TAGS" | grep -q "GitHubCommented"; then
-              echo "Work Item $id already has GitHubCommented tag. Skipping."
+              echo "Work Item $id already has 'GitHubCommented' tag. Skipping."
               continue
             fi
+
+            #================ New filter: Check for 'Comment on GitHub' tag =================
+            if ! echo "$EXISTING_TAGS" | grep -q "Comment on GitHub"; then
+              echo "Work Item $id does not have 'Comment on GitHub' tag. Skipping."
+              continue
+            fi
+            #================ End of new filter block =================
+            
             ISSUE_URL=$(echo "$WI_DETAILS" | jq -r '.relations[]? | select(.rel=="ArtifactLink" and .attributes.name=="GitHub Issue") | .url')
             if [[ -n "$ISSUE_URL" && "$ISSUE_URL" != "null" ]]; then
               DECODED_URL=$(python3 -c "import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))" "$ISSUE_URL")
@@ -135,4 +143,3 @@ jobs:
                 }
               }
             })();
-      
