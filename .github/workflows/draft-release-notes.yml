@@ -22,6 +22,7 @@ jobs:
       - name: Extract and Validate Latest Changelog
         id: extract_changelog
         run: |
+          # Use the provided input version
           VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
           TAG="v$VERSION"
 
@@ -30,9 +31,9 @@ jobs:
           cat CHANGELOG.md
           echo "-----------------------------------------"
 
-          # Extract the first matching line (tolerates leading whitespace)
-          FIRST_VERSION=$(grep -E '^[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}' CHANGELOG.md | head -1 | sed 's/^[[:space:]]*//g' | awk '{print $1}')
-
+          # Extract the first version number from list items e.g. "- [25.0.0 - 2025-04-11](#2500---2025-04-11)"
+          FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
 
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
@@ -40,12 +41,13 @@ jobs:
             exit 1
           fi
 
-          echo "Versions match. Extracting changelog section..."
+          echo "Versions match. Extracting detailed changelog section..."
 
+          # Extract changelog section from the Markdown heading that starts with "## 25.0.0 -"
           awk -v ver="$VERSION" '
-            $0 ~ "^[[:space:]]*"ver" - " { in_section=1; next }
+            $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
-              if ($0 ~ /^[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}$/) exit
+              if ($0 ~ "^[[:space:]]*##[[:space:]]+") exit
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
@@ -83,7 +85,6 @@ jobs:
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
       # - name: Download Artifacts from JFrog
       #   id: download_artifacts
