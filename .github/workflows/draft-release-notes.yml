@@ -1,46 +1,51 @@
-name: Create Draft Release (Manual Trigger)
+name: Create Draft Release (Test Version)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.2.3)'
+        description: 'Release version (e.g. 25.0.0)'
         required: true
         type: string
 
 permissions:
-  contents: write  # Required to create tags/releases
+  contents: write  # Needed to create tag and release
 
 jobs:
   create-draft-release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Validate version and extract changelog
-        id: changelog
+      - name: Extract and Validate Latest Changelog
+        id: extract_changelog
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
           TAG="v$VERSION"
 
           echo "Validating version: $VERSION"
-          FIRST_VERSION=$(grep -E '^[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}' CHANGELOG.md | head -1 | awk '{print $1}')
+          echo "---- Debug: Contents of CHANGELOG.md ----"
+          cat CHANGELOG.md
+          echo "-----------------------------------------"
+
+          # Extract the first matching line (tolerates leading whitespace)
+          FIRST_VERSION=$(grep -E '^[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}' CHANGELOG.md | head -1 | sed 's/^[[:space:]]*//g' | awk '{print $1}')
+
+          echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
 
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
-            echo "::error ::CHANGELOG.md's latest version $FIRST_VERSION does not match input version $VERSION"
+            echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
 
-          echo "Versions match. Extracting changelog..."
+          echo "Versions match. Extracting changelog section..."
+
           awk -v ver="$VERSION" '
-            $0 ~ "^" ver " - " {
-              in_section=1
-              next
-            }
+            $0 ~ "^[[:space:]]*"ver" - " { in_section=1; next }
             in_section {
-              if ($0 ~ /^[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}$/) exit
+              if ($0 ~ /^[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+ - [0-9]{4}-[0-9]{2}-[0-9]{2}$/) exit
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
@@ -49,10 +54,13 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          echo "TAG=$TAG" >> $GITHUB_ENV
-
       - name: Create Git tag if not exists
         run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v$VERSION"
+          echo "Using TAG: $TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping creation."
           else
@@ -64,13 +72,14 @@ jobs:
           fi
 
       - name: Create Draft Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
           body: |
             **Release Notes:**
-            ${{ steps.changelog.outputs.changelog_section }}
+            ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
