@@ -80,7 +80,6 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
           body: |
-            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
         env:
