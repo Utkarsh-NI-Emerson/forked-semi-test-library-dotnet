@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 25.0.0)'  # We have to check this description
+        description: 'Release version (e.g. 25.0.0)'
         required: true
         type: string
 
 permissions:
-  contents: write  # Needed to create tag and release
+  contents: write  # Needed to create tags & releases
 
 jobs:
   create-draft-release:
@@ -78,26 +78,29 @@ jobs:
           # For testing purposes, create a dummy .nupkg file named using the version
           VERSION="${{ github.event.inputs.version }}"
           echo "This is a dummy NuGet package for version $VERSION" > "${VERSION}.nupkg"
+          ls -l
 
-      - name: Create Draft Release
-        id: create_release
+      - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.TAG }}
-          name: ${{ env.TAG }}
+          tag_name: v${{ github.event.inputs.version }}
+          name: v${{ github.event.inputs.version }}
           body: |
+            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
+          files: |
+            *.nupkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Artifact download steps are commented out for now.
+      # The following artifact download steps remain commented out for now.
       # - name: Download Artifacts from JFrog
       #   id: download_artifacts
       #   run: |
       #     set -e
-      #     VERSION=${GITHUB_REF##*/}  # v1.2.3
-      #     VERSION=${VERSION#v}       # 1.2.3
+      #     VERSION=${GITHUB_REF##*/}  # e.g., v25.0.0
+      #     VERSION=${VERSION#v}
       #     BASE_URL="https://<our-jfrog-domain>.jfrog.io/artifactory/<our-repo>/releases"
       #     
       #     curl_retry() {
@@ -142,12 +145,18 @@ jobs:
       #     fi
       #     zip ../assemblies.zip *
       #     cd ..
+      #
 
-      - name: Upload Release Assets (Attach .nupkg Only)
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.TAG }}
-          files: |
-            *.nupkg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+      # WILL DELETE THIS STEP AFTERWARDS----------------------
+
+
+      # - name: Upload Release Assets (Attach assemblies.zip)
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: v${{ github.event.inputs.version }}
+      #     files: |
+      #       assemblies.zip
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
