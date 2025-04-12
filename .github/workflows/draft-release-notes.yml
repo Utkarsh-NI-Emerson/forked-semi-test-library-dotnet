@@ -68,26 +68,28 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog (Using -u Option)
+      - name: Download NuGet Package from JFrog (with safe encoding)
         env:
-          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
-          JFROG_USERNAME: utkarsh.saxena@emerson.com
+          VERSION: ${{ github.event.inputs.version }}
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
-          
+
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
-          
-          # Clean up username and password to remove any accidental whitespace or newlines.
+
           USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
           PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
-          
-          echo "Debug: Username: $USERNAME_CLEAN, Password length: ${#PASSWORD_CLEAN}"
-          
-          curl -v -u '$USERNAME_CLEAN:$PASSWORD_CLEAN' -L -o "$FILE_NAME" "$FILE_URL"
-          
+
+          AUTH_STRING="${USERNAME_CLEAN}:${PASSWORD_CLEAN}"
+          BASIC_AUTH=$(echo -n "$AUTH_STRING" | base64)
+
+          curl -v -H "Authorization: Basic $BASIC_AUTH" -L -o "$FILE_NAME" "$FILE_URL"
+
+          echo "Downloaded file details:"
           ls -l "$FILE_NAME"
+
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
