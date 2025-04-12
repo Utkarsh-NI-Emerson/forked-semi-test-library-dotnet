@@ -29,15 +29,12 @@ jobs:
           echo "-------- Contents of CHANGELOG.md --------"
           cat CHANGELOG.md
           echo "------------------------------------------"
-          
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
-          
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
-          
           echo "Versions match. Extracting detailed changelog section..."
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
@@ -46,7 +43,6 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
-          
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -57,7 +53,6 @@ jobs:
           TAG="v$VERSION"
           echo "Using TAG: $TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
-          
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping creation."
           else
@@ -79,10 +74,15 @@ jobs:
           
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
           
-          # Remove any unwanted newlines or carriage returns from credentials.
+          # Clean up username and password
           USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
           PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
           
+          # Compute and display a truncated Base64-encoded Authorization header
+          ENCODED=$(echo -n "$USERNAME_CLEAN:$PASSWORD_CLEAN" | base64)
+          echo "Debug: Computed Authorization header: Basic ${ENCODED:0:12}..."
+          
+          # Download the file using cleaned credentials
           curl -u "$USERNAME_CLEAN:$PASSWORD_CLEAN" -L -o "$FILE_NAME" "$FILE_URL"
           
           ls -l
