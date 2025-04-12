@@ -86,7 +86,6 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
-            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
@@ -146,17 +145,3 @@ jobs:
       #     zip ../assemblies.zip *
       #     cd ..
       #
-
-
-
-      # WILL DELETE THIS STEP AFTERWARDS----------------------
-
-
-      # - name: Upload Release Assets (Attach assemblies.zip)
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     tag_name: v${{ github.event.inputs.version }}
-      #     files: |
-      #       assemblies.zip
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
