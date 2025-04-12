@@ -47,7 +47,7 @@ jobs:
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
+
       - name: Create Git Tag if not exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
@@ -76,6 +76,13 @@ jobs:
           echo "Downloading NuGet package from JFrog at: $FILE_URL"
           # Use curl with authentication via Basic Auth
           curl -u "$JFROG_USERNAME:$JFROG_PASSWORD" -L -o "$FILE_NAME" "$FILE_URL"
+
+          if [ ! -s "$FILE_NAME" ] || [ $(stat -c%s "$FILE_NAME") -lt 1000 ]; then
+            echo "::error ::Downloaded file is too small, likely an error HTML or JSON. Download failed."
+            cat "$FILE_NAME"
+            exit 1
+          fi
+
           ls -l
 
       - name: Create Draft Release and Attach Asset
