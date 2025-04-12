@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 25.0.0)'
+        description: 'Release version (e.g. 25.0.0)'  # We have to check this description
         required: true
         type: string
 
@@ -27,9 +27,9 @@ jobs:
           TAG="v$VERSION"
 
           echo "Validating version: $VERSION"
-          echo "---- Debug: Contents of CHANGELOG.md ----"
+          echo "-------- Contents of CHANGELOG.md --------"
           cat CHANGELOG.md
-          echo "-----------------------------------------"
+          echo "------------------------------------------"
 
           # Extract the first version number from list items e.g. "- [25.0.0 - 2025-04-11](#2500---2025-04-11)"
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
@@ -73,6 +73,12 @@ jobs:
             git push origin "$TAG"
           fi
 
+      - name: Create Dummy .nupkg File
+        run: |
+          # For testing purposes, create a dummy .nupkg file named using the version
+          VERSION="${{ github.event.inputs.version }}"
+          echo "This is a dummy NuGet package for version $VERSION" > "${VERSION}.nupkg"
+
       - name: Create Draft Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -80,11 +86,13 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
           body: |
+            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Artifact download steps are commented out for now.
       # - name: Download Artifacts from JFrog
       #   id: download_artifacts
       #   run: |
@@ -136,12 +144,11 @@ jobs:
       #     zip ../assemblies.zip *
       #     cd ..
 
-      # - name: Upload Release Assets
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     tag_name: ${{ github.ref }}
-      #     files: |
-      #       *.nupkg
-      #       assemblies.zip
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release Assets (Attach .nupkg Only)
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          files: |
+            *.nupkg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
