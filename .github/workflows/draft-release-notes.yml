@@ -85,7 +85,7 @@ jobs:
           
           echo "Debug: Username: $USERNAME_CLEAN, Password length: ${#PASSWORD_CLEAN}"
           
-          curl -v -u '$USERNAME_CLEAN:$PASSWORD_CLEAN -L -o "$FILE_NAME" "$FILE_URL"
+          curl -v -u '$USERNAME_CLEAN:$PASSWORD_CLEAN' -L -o "$FILE_NAME" "$FILE_URL"
           
           ls -l "$FILE_NAME"
 
