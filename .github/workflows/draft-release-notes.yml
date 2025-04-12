@@ -64,20 +64,29 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog via API (Basic Auth)
+      - name: Debug: Download NuGet Package from JFrog
         env:
           VERSION: ${{ github.event.inputs.version }}
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
+          set -e
+
+          echo "Debug: VERSION=${VERSION}"
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
+          echo "Debug: FILE_NAME=${FILE_NAME}"
+          echo "Debug: FILE_URL=${FILE_URL}"
 
-          echo "Downloading $FILE_NAME from $FILE_URL"
-          curl -fL -u "$JFROG_USERNAME:$JFROG_PASSWORD" -o "$FILE_NAME" "$FILE_URL"
+          echo "Debug: Checking partial masking of credentials"
+          echo "USERNAME starts with: ${JFROG_USERNAME:0:2}***"
+          echo "PASSWORD length: ${#JFROG_PASSWORD}"
 
+          echo "Debug: Making curl request with verbose logging..."
+          curl -v -fL -u "$JFROG_USERNAME:$JFROG_PASSWORD" -o "$FILE_NAME" "$FILE_URL"
+
+          echo "Debug: Listing downloaded files"
           ls -lh
-
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
