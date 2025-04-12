@@ -1,4 +1,4 @@
-name: Create Draft Release
+name: Create Draft Release (Debug)
 
 on:
   workflow_dispatch:
@@ -64,7 +64,7 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Debug: Download NuGet Package from JFrog
+      - name: (Debug) Download NuGet Package from JFrog
         env:
           VERSION: ${{ github.event.inputs.version }}
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
