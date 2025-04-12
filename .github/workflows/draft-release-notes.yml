@@ -1,4 +1,4 @@
-name: Create Draft Release (Test Version)
+name: Create Draft Release
 
 on:
   workflow_dispatch:
@@ -25,13 +25,14 @@ jobs:
           # Use the provided input version
           VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
           TAG="v$VERSION"
-
+          
           echo "Validating version: $VERSION"
           echo "-------- Contents of CHANGELOG.md --------"
           cat CHANGELOG.md
           echo "------------------------------------------"
 
-          # Extract the first version number from list items e.g. "- [25.0.0 - 2025-04-11](#2500---2025-04-11)"
+          # Extract the first version number from list items 
+          # For example, from: "- [25.0.0 - 2025-04-11](#2500---2025-04-11)"
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
@@ -56,7 +57,7 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Git tag if not exists
+      - name: Create Git Tag if not exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
@@ -73,11 +74,38 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Create Dummy .nupkg File
+      - name: Configure JFrog CLI
+        env:
+          JFROG_URL: ${{ secrets.JFROG_URL }}        # e.g., "https://pull.artifacts.ni.com/artifactory"
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
-          # For testing purposes, create a dummy .nupkg file named using the version
-          VERSION="${{ github.event.inputs.version }}"
-          echo "This is a dummy NuGet package for version $VERSION" > "${VERSION}.nupkg"
+          echo "Installing and configuring JFrog CLI..."
+          # Download JFrog CLI if not already installed
+          curl -fL https://releases.jfrog.io/artifactory/jfrog-cli/v2-jf/jfrog-cli-linux-amd64/jfrog -o jfrog
+          chmod +x jfrog
+          sudo mv jfrog /usr/local/bin/
+          jfrog --version
+          # Configure the JFrog CLI using secure environment variables.
+          jfrog config add ni-jfrog \
+            --url="$JFROG_URL" \
+            --user="$JFROG_USERNAME" \
+            --password="$JFROG_PASSWORD" \
+            --interactive=false
+
+      - name: Download NuGet Package from JFrog
+        env:
+          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
+        run: |
+          # Construct the expected file name and full path
+          FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
+          JFROG_REPO_PATH="${{ secrets.JFROG_REPO_PATH }}"
+          FULL_PATH="${JFROG_REPO_PATH}/${FILE_NAME}"
+          
+          echo "Downloading NuGet package from JFrog at path: $FULL_PATH"
+          # Download only the specific NuGet package with --flat=true to avoid creating extra directories.
+          jfrog rt dl "$FULL_PATH" --flat=true
+          
           ls -l
 
       - name: Create Draft Release and Attach Asset
@@ -86,6 +114,7 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
+            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
@@ -94,12 +123,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # The following artifact download steps remain commented out for now.
-      # - name: Download Artifacts from JFrog
+      # They can be re-enabled when additional artifacts are to be fetched.
+      # - name: Download Additional Artifacts from JFrog
       #   id: download_artifacts
       #   run: |
       #     set -e
-      #     VERSION=${GITHUB_REF##*/}  # e.g., v25.0.0
-      #     VERSION=${VERSION#v}
+      #     VERSION="${{ github.event.inputs.version }}"
       #     BASE_URL="https://<our-jfrog-domain>.jfrog.io/artifactory/<our-repo>/releases"
       #     
       #     curl_retry() {
@@ -118,7 +147,7 @@ jobs:
       #       return 1
       #     }
       #     
-      #     echo "Downloading .nupkg..."
+      #     echo "Downloading additional .nupkg..."
       #     curl_retry "$BASE_URL/${VERSION}.nupkg" "${VERSION}.nupkg"
       #     
       #     mkdir -p assemblies
@@ -145,3 +174,11 @@ jobs:
       #     zip ../assemblies.zip *
       #     cd ..
       #
+      # - name: Upload Additional Release Assets (Attach assemblies.zip)
+      #   uses: softprops/action-gh-release@v1
+      #   with:
+      #     tag_name: v${{ github.event.inputs.version }}
+      #     files: |
+      #       assemblies.zip
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
