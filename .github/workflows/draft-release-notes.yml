@@ -22,22 +22,20 @@ jobs:
       - name: Extract and Validate Latest Changelog
         id: extract_changelog
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
           TAG="v$VERSION"
-
+          
           echo "Validating version: $VERSION"
           echo "-------- Contents of CHANGELOG.md --------"
           cat CHANGELOG.md
           echo "------------------------------------------"
-
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
-
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
-
           echo "Versions match. Extracting detailed changelog section..."
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
@@ -46,18 +44,16 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
-
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
+          
       - name: Create Git Tag if not exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           echo "Using TAG: $TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
-
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping creation."
           else
@@ -68,32 +64,19 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog (Debugging)
+      - name: Download NuGet Package from JFrog
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
           
-          echo "Debug: Downloading from $FILE_URL"
-          echo "Debug: Username starts with $(echo "$JFROG_USERNAME" | cut -c1-3), password length ${#JFROG_PASSWORD}"
-
-          USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
-          PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
-
-          # Download with verbose logging
-          curl -v -u "$USERNAME_CLEAN:$PASSWORD_CLEAN" -L -o "$FILE_NAME" "$FILE_URL" --fail --show-error
-
-          echo "✅ Download finished. Checking file:"
-          ls -lh "$FILE_NAME"
-
-          echo "🧪 File magic bytes:"
-          file "$FILE_NAME"
-
-          echo "📄 First few lines (sanitized):"
-          head -n 20 "$FILE_NAME" || echo "(binary content)"
+          echo "Downloading NuGet package from JFrog at: $FILE_URL"
+          # Use curl with authentication via Basic Auth
+          curl -u "$JFROG_USERNAME:$JFROG_PASSWORD" -L -o "$FILE_NAME" "$FILE_URL"
+          ls -l
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -101,6 +84,7 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
+            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
