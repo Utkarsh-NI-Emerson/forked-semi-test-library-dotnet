@@ -68,7 +68,7 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog (Postman-accurate)
+      - name: Download NuGet Package from JFrog (strip newlines from secrets)
         env:
           VERSION: ${{ github.event.inputs.version }}
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
@@ -79,7 +79,11 @@ jobs:
 
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
 
-          AUTH_HEADER=$(echo -n "${JFROG_USERNAME}:${JFROG_PASSWORD}" | base64)
+          # Strip any invisible newlines
+          CLEAN_USERNAME=$(echo -n "$JFROG_USERNAME" | tr -d '\n' | tr -d '\r')
+          CLEAN_PASSWORD=$(echo -n "$JFROG_PASSWORD" | tr -d '\n' | tr -d '\r')
+
+          AUTH_HEADER=$(echo -n "${CLEAN_USERNAME}:${CLEAN_PASSWORD}" | base64)
 
           curl --location "$FILE_URL" \
             --header "Authorization: Basic $AUTH_HEADER" \
@@ -87,7 +91,6 @@ jobs:
 
           echo "Downloaded file details:"
           ls -l "$FILE_NAME"
-
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
