@@ -29,12 +29,15 @@ jobs:
           echo "-------- Contents of CHANGELOG.md --------"
           cat CHANGELOG.md
           echo "------------------------------------------"
+          
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
+          
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
+          
           echo "Versions match. Extracting detailed changelog section..."
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
@@ -43,6 +46,7 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
+          
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -53,6 +57,7 @@ jobs:
           TAG="v$VERSION"
           echo "Using TAG: $TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
+          
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping creation."
           else
@@ -63,7 +68,7 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog
+      - name: Download NuGet Package from JFrog (Using Explicit Authorization Header)
         env:
           VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
@@ -74,16 +79,16 @@ jobs:
           
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
           
-          # Clean up username and password
+          # Clean up any extra whitespace or newline characters
           USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
           PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
           
-          # Compute and display a truncated Base64-encoded Authorization header
-          ENCODED=$(echo -n "$USERNAME_CLEAN:$PASSWORD_CLEAN" | base64)
-          echo "Debug: Computed Authorization header: Basic ${ENCODED:0:12}..."
+          # Compute the Base64-encoded Authorization header value
+          BASIC_AUTH=$(echo -n "$USERNAME_CLEAN:$PASSWORD_CLEAN" | base64)
+          echo "Debug: Computed Authorization header: Basic ${BASIC_AUTH:0:12}..."
           
-          # Download the file using cleaned credentials
-          curl -u "$USERNAME_CLEAN:$PASSWORD_CLEAN" -L -o "$FILE_NAME" "$FILE_URL"
+          # Download using the Authorization header explicitly
+          curl -H "Authorization: Basic $BASIC_AUTH" -L -o "$FILE_NAME" "$FILE_URL"
           
           ls -l
 
@@ -93,7 +98,6 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
-            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
