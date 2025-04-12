@@ -72,18 +72,33 @@ jobs:
 
       - name: Download NuGet Package from JFrog
         env:
-          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
+          VERSION: ${{ github.event.inputs.version }}
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
+          set -e
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
           
-          echo "Downloading NuGet package from JFrog at: $FILE_URL"
-          # Use curl with authentication via Basic Auth
-          curl -u "$JFROG_USERNAME:$JFROG_PASSWORD" -L -o "$FILE_NAME" "$FILE_URL"
+          echo "Debug: Downloading from $FILE_URL"
+          echo "Debug: Username starts with ${JFROG_USERNAME:0:3}, password length ${#JFROG_PASSWORD}"
 
-          ls -l
+          # Verbose curl with header output
+          curl -v -u "$JFROG_USERNAME:$JFROG_PASSWORD" -L -o "$FILE_NAME" "$FILE_URL" --fail --silent --show-error
+
+          echo "Debug: Download complete. Checking file..."
+          if [ ! -s "$FILE_NAME" ]; then
+            echo "::error ::File $FILE_NAME is empty after download"
+            exit 1
+          fi
+
+          echo "Debug: File info:"
+          file "$FILE_NAME"
+          ls -lh "$FILE_NAME"
+
+          echo "Debug: First 20 bytes of file:"
+          head -c 20 "$FILE_NAME" | hexdump -C
+
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -91,7 +106,6 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
-            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
