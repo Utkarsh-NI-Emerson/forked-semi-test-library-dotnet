@@ -67,8 +67,8 @@ jobs:
             git tag "$TAG"
             git push origin "$TAG"
           fi
-
-      - name: Download NuGet Package from JFrog (with safe encoding)
+          
+      - name: Download NuGet Package from JFrog (Base64 auth from secrets)
         env:
           VERSION: ${{ github.event.inputs.version }}
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
@@ -79,17 +79,21 @@ jobs:
 
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
 
+          # Trim values
           USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
           PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
 
-          AUTH_STRING="${USERNAME_CLEAN}:${PASSWORD_CLEAN}"
-          BASIC_AUTH=$(echo -n "$AUTH_STRING" | base64)
+          echo "Username: $USERNAME_CLEAN"
+          echo "Password length: ${#PASSWORD_CLEAN}"
 
-          curl -v -H "Authorization: Basic $BASIC_AUTH" -L -o "$FILE_NAME" "$FILE_URL"
+          # Base64 encode "username:password"
+          BASIC_AUTH=$(echo -n "${USERNAME_CLEAN}:${PASSWORD_CLEAN}" | base64)
+
+          # Download using Authorization header
+          curl -v -L -H "Authorization: Basic $BASIC_AUTH" -o "$FILE_NAME" "$FILE_URL"
 
           echo "Downloaded file details:"
           ls -l "$FILE_NAME"
-
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
