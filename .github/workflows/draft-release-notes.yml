@@ -68,30 +68,26 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog (Debug Response)
+      - name: Download NuGet Package from JFrog (Using -u Option)
         env:
-          VERSION: ${{ github.event.inputs.version }}
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
+          JFROG_USERNAME: utkarsh.saxena@emerson.com
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
-
+          
           echo "Downloading NuGet package from JFROG at: $FILE_URL"
-
+          
+          # Clean up username and password to remove any accidental whitespace or newlines.
           USERNAME_CLEAN=$(echo -n "$JFROG_USERNAME" | tr -d '\r\n')
           PASSWORD_CLEAN=$(echo -n "$JFROG_PASSWORD" | tr -d '\r\n')
-          BASIC_AUTH=$(echo -n "$USERNAME_CLEAN:$PASSWORD_CLEAN" | base64)
-          echo "Debug: Computed Authorization header: Basic ${BASIC_AUTH:0:12}..."
-
-          curl -i -H "Authorization: Basic $BASIC_AUTH" -L -o "$FILE_NAME" "$FILE_URL"
-
-          echo "----- File Content (first 200 bytes) -----"
-          head -c 200 "$FILE_NAME" | xxd
-          echo "------------------------------------------"
-
-          ls -lh "$FILE_NAME"
-
+          
+          echo "Debug: Username: $USERNAME_CLEAN, Password length: ${#PASSWORD_CLEAN}"
+          
+          curl -v -u "$USERNAME_CLEAN:$PASSWORD_CLEAN" -L -o "$FILE_NAME" "$FILE_URL"
+          
+          ls -l "$FILE_NAME"
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -99,6 +95,7 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
+            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
