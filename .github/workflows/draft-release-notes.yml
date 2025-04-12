@@ -82,7 +82,7 @@ jobs:
         run: |
           echo "Installing and configuring JFrog CLI..."
           # Download JFrog CLI if not already installed
-          curl -fL https://releases.jfrog.io/artifactory/jfrog-cli/v2-jf/jfrog-cli-linux-amd64/jfrog -o jfrog
+          curl -fL https://jfrog.com/download-jfrog-cli/cli-linux-amd64/jfrog -o jfrog
           chmod +x jfrog
           sudo mv jfrog /usr/local/bin/
           jfrog --version
