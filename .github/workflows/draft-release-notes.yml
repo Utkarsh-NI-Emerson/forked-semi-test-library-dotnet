@@ -1,4 +1,4 @@
-name: Create Draft Release (Debug)
+name: Create Draft Release
 
 on:
   workflow_dispatch:
@@ -22,18 +22,24 @@ jobs:
       - name: Extract and Validate Latest Changelog
         id: extract_changelog
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
           TAG="v$VERSION"
-
+          
           echo "Validating version: $VERSION"
+          echo "-------- Contents of CHANGELOG.md --------"
+          cat CHANGELOG.md
+          echo "------------------------------------------"
 
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          
           echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
 
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
+
+          echo "Versions match. Extracting detailed changelog section..."
 
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
@@ -64,29 +70,20 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: (Debug) Download NuGet Package from JFrog
+      - name: Download NuGet Package from JFrog
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          VERSION: ${{ github.event.inputs.version }}  # e.g., "25.0.0"
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
-          set -e
-
-          echo "Debug: VERSION=${VERSION}"
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
-          echo "Debug: FILE_NAME=${FILE_NAME}"
-          echo "Debug: FILE_URL=${FILE_URL}"
+          
+          echo "Downloading NuGet package from JFrog at: $FILE_URL"
+          # Use curl with authentication via Basic Auth
+          curl -u "$JFROG_USERNAME:$JFROG_PASSWORD" -L -o "$FILE_NAME" "$FILE_URL"
 
-          echo "Debug: Checking partial masking of credentials"
-          echo "USERNAME starts with: ${JFROG_USERNAME:0:2}***"
-          echo "PASSWORD length: ${#JFROG_PASSWORD}"
-
-          echo "Debug: Making curl request with verbose logging..."
-          curl -v -fL -u "$JFROG_USERNAME:$JFROG_PASSWORD" -o "$FILE_NAME" "$FILE_URL"
-
-          echo "Debug: Listing downloaded files"
-          ls -lh
+          ls -l
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
