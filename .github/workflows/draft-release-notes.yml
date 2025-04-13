@@ -68,28 +68,22 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog using curl mimicking Postman
+      - name: Download NuGet Package from JFrog using Identity Token
         env:
-          VERSION: ${{ github.event.inputs.version }}
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+          FILE_URL: https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+          FILE_NAME: NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+          JFROG_IDENTITY_TOKEN: ${{ secrets.JFROG_IDENTITY_TOKEN }}
         run: |
-          FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
-          FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
-
           echo "Downloading NuGet package from JFrog at: $FILE_URL"
-
           curl -L -v "$FILE_URL" \
-            -o "$FILE_NAME" \
-            -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
+            -H "Authorization: Bearer $JFROG_IDENTITY_TOKEN" \
             -H "Accept: application/octet-stream" \
-            -H "User-Agent: PostmanRuntime/7.36.0"
+            -o "$FILE_NAME"
 
           echo "Downloaded file details:"
           ls -lh "$FILE_NAME"
           echo "SHA256 checksum:"
           sha256sum "$FILE_NAME"
-
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
