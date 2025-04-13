@@ -72,7 +72,7 @@ jobs:
         env:
           FILE_URL: https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
           FILE_NAME: NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
-          JFROG_IDENTITY_TOKEN: ${{ secrets.JFROG_IDENTITY_TOKEN }}
+          JFROG_IDENTITY_TOKEN: ${{ secrets.JFROG_PASSWORD }}
         run: |
           echo "Downloading NuGet package from JFrog at: $FILE_URL"
           curl -L -v "$FILE_URL" \
