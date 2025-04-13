@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write  # Needed to create tags & releases
+  contents: write
 
 jobs:
   create-draft-release:
@@ -19,26 +19,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Extract and Validate Latest Changelog
+      - name: Validate and Extract Changelog
         id: extract_changelog
         run: |
-          VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
+          VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
-          
-          echo "Validating version: $VERSION"
-          echo "-------- Contents of CHANGELOG.md --------"
-          cat CHANGELOG.md
-          echo "------------------------------------------"
-          
+
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
-          echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
-          
+
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
-          
-          echo "Versions match. Extracting detailed changelog section..."
+
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
@@ -46,7 +39,7 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
-          
+
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -55,39 +48,70 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
-          echo "Using TAG: $TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
-          
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping creation."
+            echo "Tag $TAG already exists. Skipping."
           else
-            echo "Creating tag $TAG"
             git config user.name "github-actions"
             git config user.email "github-actions@github.com"
             git tag "$TAG"
             git push origin "$TAG"
           fi
 
-      - name: Setup JFrog CLI
-        uses: JFrog/setup-jfrog-cli@v1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          version: 'latest'
+          node-version: 20
+
+      - name: Download .nupkg using Node.js
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
+          URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME"
+
+          echo "Downloading from $URL"
+
+          cat <<EOF > download.js
+          const fs = require('fs');
+          const https = require('https');
+
+          const username = process.env.JFROG_USERNAME;
+          const password = process.env.JFROG_PASSWORD;
+          const version = process.env.VERSION;
+          const fileName = \`NationalInstruments.SemiconductorTestLibrary.\${version}.nupkg\`;
+          const url = \`https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/\${fileName}\`;
+
+          const auth = Buffer.from(\`\${username}:\${password}\`).toString('base64');
+          const options = {
+            headers: {
+              'Authorization': \`Basic \${auth}\`
+            }
+          };
+
+          const file = fs.createWriteStream(fileName);
+          https.get(url, options, (res) => {
+            if (res.statusCode !== 200) {
+              console.error('Failed to download:', res.statusCode);
+              res.resume();
+              process.exit(1);
+            }
+
+            res.pipe(file);
+            file.on('finish', () => {
+              file.close(() => console.log('Download complete:', fileName));
+            });
+          }).on('error', (err) => {
+            console.error('Error:', err.message);
+            process.exit(1);
+          });
+          EOF
+
+          node download.js
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
-
-      - name: Download NuGet package from JFrog
-        run: |
-          echo "Downloading NuGet package from JFrog..."
-          
-          jfrog rt dl "rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg" \
-            --url="https://pull.artifacts.ni.com/artifactory" \
-            --user="${{ secrets.JFROG_USERNAME }}" \
-            --password="${{ secrets.JFROG_PASSWORD }}" \
-            --flat=true
-
-          echo "Downloaded file details:"
-          ls -lh "NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg"
+          VERSION: ${{ github.event.inputs.version }}
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
