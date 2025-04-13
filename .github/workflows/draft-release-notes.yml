@@ -68,8 +68,8 @@ jobs:
           echo "Downloading from $URL"
 
           curl --fail --location "$URL" \
-            --output "$FILENAME" \
-            --user "utkarsh.saxena@emerson.com:${{ secrets.JFROG_PASSWORD }}"
+          --output "$FILENAME" \
+          --user "utkarsh.saxena%40emerson.com:${{ secrets.JFROG_PASSWORD }}"
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
