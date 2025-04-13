@@ -68,23 +68,18 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog using REST API (cURL)
+      - name: Download NuGet Package from JFrog using REST API (cURL with API Key Header)
         env:
           VERSION: ${{ github.event.inputs.version }}
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}  # May not be needed with API key header
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}    # Replace with API key if available
         run: |
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
           echo "Downloading NuGet package from JFrog at: $FILE_URL"
-          
-          # Verbose mode to log redirects and headers for debugging purposes.
-          curl -L -v -u $JFROG_USERNAME:$JFROG_PASSWORD "$FILE_URL" -o "$FILE_NAME"
-          
+          curl -L -v -H "X-JFrog-Art-Api: $JFROG_PASSWORD" "$FILE_URL" -o "$FILE_NAME"
           echo "Downloaded file details:"
           ls -lh "$FILE_NAME"
-          
-          # Optionally, calculate the SHA256 checksum if available for verifying integrity.
           echo "SHA256 checksum:"
           sha256sum "$FILE_NAME"
 
