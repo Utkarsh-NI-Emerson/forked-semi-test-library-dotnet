@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write  # Needed to create tags & releases
+  contents: write
 
 jobs:
   create-draft-release:
@@ -22,23 +22,19 @@ jobs:
       - name: Extract and Validate Latest Changelog
         id: extract_changelog
         run: |
-          VERSION="${{ github.event.inputs.version }}"  # e.g., "25.0.0"
+          VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           
           echo "Validating version: $VERSION"
-          echo "-------- Contents of CHANGELOG.md --------"
-          cat CHANGELOG.md
-          echo "------------------------------------------"
           
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
-          echo "Extracted FIRST_VERSION from CHANGELOG.md: '$FIRST_VERSION'"
+          echo "Extracted FIRST_VERSION: '$FIRST_VERSION'"
           
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
-            echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
+            echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input '$VERSION'"
             exit 1
           fi
           
-          echo "Versions match. Extracting detailed changelog section..."
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
@@ -51,17 +47,15 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Git Tag if not exists
+      - name: Create Git Tag if Not Exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
-          echo "Using TAG: $TAG"
           echo "TAG=$TAG" >> $GITHUB_ENV
           
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping creation."
+            echo "Tag $TAG already exists."
           else
-            echo "Creating tag $TAG"
             git config user.name "github-actions"
             git config user.email "github-actions@github.com"
             git tag "$TAG"
@@ -70,21 +64,27 @@ jobs:
 
       - name: Download NuGet package from JFrog
         run: |
-          echo "Downloading NuGet package from JFrog at: https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg"
+          VERSION="${{ github.event.inputs.version }}"
+          PACKAGE_NAME="NationalInstruments.SemiconductorTestLibrary"
+          FILE_NAME="$PACKAGE_NAME.$VERSION.nupkg"
+          ARTIFACTORY_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/$PACKAGE_NAME/$FILE_NAME"
 
-          curl -L "https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg" \
-            -H "Authorization: Bearer ${{ secrets.JFROG_PASSWORD }}" \
-            -H "Accept: */*" \
-            -H "Cache-Control: no-cache" \
-            -H "User-Agent: PostmanRuntime/7.36.0" \
-            -H "Connection: keep-alive" \
-            -o "NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg"
+          echo "Encoding credentials..."
+          AUTH_STRING="${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }}"
+          ENCODED_AUTH=$(echo -n "$AUTH_STRING" | base64)
+
+          echo "Downloading from $ARTIFACTORY_URL"
+          curl -L "$ARTIFACTORY_URL" \
+            -H "Authorization: Basic $ENCODED_AUTH" \
+            -H "Accept: application/octet-stream" \
+            -o "$FILE_NAME"
 
           echo "Downloaded file details:"
-          ls -lh NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
-
+          ls -lh "$FILE_NAME"
           echo "SHA256 checksum:"
-          sha256sum NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+          sha256sum "$FILE_NAME"
+
+          echo "PACKAGE_PATH=$FILE_NAME" >> $GITHUB_ENV
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -95,7 +95,6 @@ jobs:
             **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
-          files: |
-            NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+          files: ${{ env.PACKAGE_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
