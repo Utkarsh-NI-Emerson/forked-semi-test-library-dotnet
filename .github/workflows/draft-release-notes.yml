@@ -64,7 +64,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Download .nupkg using Node.js
+      - name: Download .nupkg using Node.js with Basic Auth secret
         run: |
           VERSION="${{ github.event.inputs.version }}"
           FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
@@ -76,13 +76,11 @@ jobs:
           const fs = require('fs');
           const https = require('https');
 
-          const username = process.env.JFROG_USERNAME;
-          const password = process.env.JFROG_PASSWORD;
+          const auth = process.env.JFROG_AUTH_BASIC;
           const version = process.env.VERSION;
           const fileName = \`NationalInstruments.SemiconductorTestLibrary.\${version}.nupkg\`;
           const url = \`https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/\${fileName}\`;
 
-          const auth = Buffer.from(\`\${username}:\${password}\`).toString('base64');
           const options = {
             headers: {
               'Authorization': \`Basic \${auth}\`
@@ -109,8 +107,7 @@ jobs:
 
           node download.js
         env:
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+          JFROG_AUTH_BASIC: ${{ secrets.JFROG_AUTH_BASIC }}
           VERSION: ${{ github.event.inputs.version }}
 
       - name: Create Draft Release and Attach Asset
