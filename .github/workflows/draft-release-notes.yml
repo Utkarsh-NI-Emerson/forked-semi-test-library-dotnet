@@ -62,22 +62,22 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet package from JFrog
+      - name: Install JFrog CLI
+        run: |
+          curl -fL https://getcli.jfrog.io | sh
+          sudo mv jfrog /usr/local/bin/jfrog
+
+      - name: Authenticate with JFrog Artifactory
+        run: |
+          jfrog rt config --url "https://pull.artifacts.ni.com/artifactory" --user "${{ secrets.JFROG_USERNAME }}" --password "${{ secrets.JFROG_PASSWORD }}"
+
+      - name: Download NuGet package from JFrog using JFrog CLI
         run: |
           VERSION="${{ github.event.inputs.version }}"
           PACKAGE_NAME="NationalInstruments.SemiconductorTestLibrary"
           FILE_NAME="$PACKAGE_NAME.$VERSION.nupkg"
-          ARTIFACTORY_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/$PACKAGE_NAME/$FILE_NAME"
-
-          echo "Encoding credentials..."
-          AUTH_STRING="${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }}"
-          ENCODED_AUTH=$(echo -n "$AUTH_STRING" | base64)
-
-          echo "Downloading from $ARTIFACTORY_URL"
-          curl -L "$ARTIFACTORY_URL" \
-            -H "Authorization: Basic $ENCODED_AUTH" \
-            -H "Accept: application/octet-stream" \
-            -o "$FILE_NAME"
+          ARTIFACTORY_PATH="rnd-nuget-ci/$PACKAGE_NAME/$FILE_NAME"
+          jfrog rt download "$ARTIFACTORY_PATH" --flat=true --output="$FILE_NAME"
 
           echo "Downloaded file details:"
           ls -lh "$FILE_NAME"
