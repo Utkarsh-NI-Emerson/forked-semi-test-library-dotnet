@@ -64,6 +64,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install Axios
+        run: npm install axios
+
       - name: Download .nupkg using Node.js + Axios
         run: |
           VERSION="${{ github.event.inputs.version }}"
