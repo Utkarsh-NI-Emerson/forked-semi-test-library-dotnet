@@ -68,22 +68,23 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog using Identity Token
-        env:
-          FILE_URL: https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
-          FILE_NAME: NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
-          JFROG_IDENTITY_TOKEN: ${{ secrets.JFROG_PASSWORD }}
+      - name: Download NuGet package from JFrog
         run: |
-          echo "Downloading NuGet package from JFrog at: $FILE_URL"
-          curl -L -v "$FILE_URL" \
-            -H "Authorization: Bearer $JFROG_IDENTITY_TOKEN" \
-            -H "Accept: application/octet-stream" \
-            -o "$FILE_NAME"
+          echo "Downloading NuGet package from JFrog at: https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg"
+
+          curl -L "https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg" \
+            -H "Authorization: Bearer ${{ secrets.JFROG_PASSWORD }}" \
+            -H "Accept: */*" \
+            -H "Cache-Control: no-cache" \
+            -H "User-Agent: PostmanRuntime/7.36.0" \
+            -H "Connection: keep-alive" \
+            -o "NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg"
 
           echo "Downloaded file details:"
-          ls -lh "$FILE_NAME"
+          ls -lh NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+
           echo "SHA256 checksum:"
-          sha256sum "$FILE_NAME"
+          sha256sum NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -95,6 +96,6 @@ jobs:
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
-            *.nupkg
+            NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
