@@ -64,7 +64,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Download .nupkg using Node.js with Basic Auth secret
+      - name: Download .nupkg using Node.js + Axios
         run: |
           VERSION="${{ github.event.inputs.version }}"
           FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
@@ -74,41 +74,41 @@ jobs:
 
           cat <<EOF > download.js
           const fs = require('fs');
-          const https = require('https');
+          const axios = require('axios');
 
-          const auth = process.env.JFROG_AUTH_BASIC;
           const version = process.env.VERSION;
           const fileName = \`NationalInstruments.SemiconductorTestLibrary.\${version}.nupkg\`;
           const url = \`https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/\${fileName}\`;
+          const auth = process.env.JFROG_AUTH_BASIC.trim();
 
-          const options = {
-            headers: {
+          let config = {
+            method: 'get',
+            maxBodyLength: Infinity,
+            url: url,
+            responseType: 'stream',
+            headers: { 
               'Authorization': \`Basic \${auth}\`
             }
           };
 
-          const file = fs.createWriteStream(fileName);
-          https.get(url, options, (res) => {
-            if (res.statusCode !== 200) {
-              console.error('Failed to download:', res.statusCode);
-              res.resume();
-              process.exit(1);
-            }
-
-            res.pipe(file);
-            file.on('finish', () => {
-              file.close(() => console.log('Download complete:', fileName));
+          axios.request(config)
+          .then((response) => {
+            const writer = fs.createWriteStream(fileName);
+            response.data.pipe(writer);
+            writer.on('finish', () => {
+              console.log('Download completed:', fileName);
             });
-          }).on('error', (err) => {
-            console.error('Error:', err.message);
+          })
+          .catch((error) => {
+            console.error('Download failed:', error.response?.status || error.message);
             process.exit(1);
           });
           EOF
 
           node download.js
         env:
-          JFROG_AUTH_BASIC: ${{ secrets.JFROG_AUTH_BASIC }}
           VERSION: ${{ github.event.inputs.version }}
+          JFROG_AUTH_BASIC: ${{ secrets.JFROG_AUTH_BASIC }}
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
