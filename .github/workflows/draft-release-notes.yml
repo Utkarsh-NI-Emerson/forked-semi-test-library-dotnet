@@ -69,7 +69,9 @@ jobs:
 
       - name: Authenticate with JFrog Artifactory
         run: |
-          jfrog rt config --url "https://pull.artifacts.ni.com/artifactory" --user "${{ secrets.JFROG_USERNAME }}" --password "${{ secrets.JFROG_PASSWORD }}"
+          jfrog config add my-artifactory --artifactory-url="https://pull.artifacts.ni.com/artifactory" \
+            --user "${{ secrets.JFROG_USERNAME }}" \
+            --password "${{ secrets.JFROG_PASSWORD }}"
 
       - name: Download NuGet package from JFrog using JFrog CLI
         run: |
