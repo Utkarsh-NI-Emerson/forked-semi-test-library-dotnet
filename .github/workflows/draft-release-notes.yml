@@ -68,20 +68,28 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download NuGet Package from JFrog using REST API (cURL with API Key Header)
+      - name: Download NuGet Package from JFrog using curl mimicking Postman
         env:
           VERSION: ${{ github.event.inputs.version }}
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}  # May not be needed with API key header
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}    # Replace with API key if available
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
           FILE_NAME="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
           FILE_URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/${FILE_NAME}"
+
           echo "Downloading NuGet package from JFrog at: $FILE_URL"
-          curl -L -v -H "X-JFrog-Art-Api: $JFROG_PASSWORD" "$FILE_URL" -o "$FILE_NAME"
+
+          curl -L -v "$FILE_URL" \
+            -o "$FILE_NAME" \
+            -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
+            -H "Accept: application/octet-stream" \
+            -H "User-Agent: PostmanRuntime/7.36.0"
+
           echo "Downloaded file details:"
           ls -lh "$FILE_NAME"
           echo "SHA256 checksum:"
           sha256sum "$FILE_NAME"
+
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
