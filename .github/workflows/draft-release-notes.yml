@@ -59,15 +59,7 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Axios
-        run: npm install axios
-
-      - name: Download .nupkg using Node.js + Axios
+      - name: Download .nupkg using curl
         run: |
           VERSION="${{ github.event.inputs.version }}"
           FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
@@ -75,43 +67,9 @@ jobs:
 
           echo "Downloading from $URL"
 
-          cat <<EOF > download.js
-          const fs = require('fs');
-          const axios = require('axios');
-
-          const version = process.env.VERSION;
-          const fileName = \`NationalInstruments.SemiconductorTestLibrary.\${version}.nupkg\`;
-          const url = \`https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/\${fileName}\`;
-          const auth = process.env.JFROG_AUTH_BASIC.trim();
-
-          let config = {
-            method: 'get',
-            maxBodyLength: Infinity,
-            url: url,
-            responseType: 'stream',
-            headers: { 
-              'Authorization': \`Basic \${auth}\`
-            }
-          };
-
-          axios.request(config)
-          .then((response) => {
-            const writer = fs.createWriteStream(fileName);
-            response.data.pipe(writer);
-            writer.on('finish', () => {
-              console.log('Download completed:', fileName);
-            });
-          })
-          .catch((error) => {
-            console.error('Download failed:', error.response?.status || error.message);
-            process.exit(1);
-          });
-          EOF
-
-          node download.js
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-          JFROG_AUTH_BASIC: ${{ secrets.JFROG_AUTH_BASIC }}
+          curl --fail --location "$URL" \
+            --output "$FILENAME" \
+            --header "Authorization: Basic ${{ secrets.JFROG_AUTH_BASIC }}"
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
