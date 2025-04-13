@@ -69,7 +69,7 @@ jobs:
 
           curl --fail --location "$URL" \
             --output "$FILENAME" \
-            --header "Authorization: Basic dXRrYXJzaC5zYXhlbmFAZW1lcnNvbi5jb206Y21WbWRHdHVPakF4T2pFM056WXdOelV6T0RnNlUydFdSemRFUm5sT1RUSXlja28zUWtkc2JrVktXazA0TUdodg=="
+            --user "utkarsh.saxena@emerson.com:${{ secrets.JFROG_PASSWORD }}"
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
