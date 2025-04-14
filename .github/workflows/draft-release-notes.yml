@@ -52,9 +52,9 @@ jobs:
       - name: Configure JFrog CLI with Basic Auth
         run: |
           jf c add artifactory-server \
-            --url="https://pull.artifacts.ni.com/artifactory" \
-            --user="${{ secrets.JFROG_USERNAME }}" \
-            --password="${{ secrets.JFROG_PASSWORD }}" \
+            --url=https://pull.artifacts.ni.com/artifactory \
+            --user=utkarsh.saxena@emerson.com \
+            --password=${{ secrets.JFROG_PASSWORD }} \
             --enc-password=false \
             --basic-auth-only
           jf c use artifactory-server
