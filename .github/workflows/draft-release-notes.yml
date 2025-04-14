@@ -67,10 +67,10 @@ jobs:
 
       - name: Configure JFrog CLI with workaround
         run: |
-          jfrog config add myartifactory \
+          jfrog config add ni-artifactory \
             --artifactory-url="https://pull.artifacts.ni.com/artifactory" \
-            --user='utkarsh.saxena@emerson.com' \
-            --password="${{ secrets.JFROG_PASSWORD }}" \
+            --user=utkarsh.saxena@emerson.com \
+            --password=${{ secrets.JFROG_PASSWORD }} \
             --enc-password=false \
             --basic-auth-only \
             --interactive=false
