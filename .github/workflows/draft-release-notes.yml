@@ -14,6 +14,7 @@ permissions:
 jobs:
   create-draft-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -24,16 +25,17 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
-          FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          FIRST_VERSION=$(grep -Po '^- \[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
 
           awk -v ver="$VERSION" '
-            $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
+            $0 ~ "^##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
-              if ($0 ~ "^[[:space:]]*##[[:space:]]+") exit
+              if ($0 ~ "^##[[:space:]]+") exit
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
@@ -42,29 +44,12 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Git Tag if not exists
-        run: |
-          VERSION="${{ github.event.inputs.version }}"
-          TAG="v$VERSION"
-          echo "TAG=$TAG" >> $GITHUB_ENV
-
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping."
-          else
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-
-      - name: Set up JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v1
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v3
         with:
-          version: 2.52.0  # use a stable known-good version
-        env:
-          JFROG_CLI_OFFER_CONFIG: false
+          version: 2.53.2
 
-      - name: Configure JFrog CLI for Basic Auth
+      - name: Configure JFrog CLI with Basic Auth
         run: |
           jf c add artifactory-server \
             --url="https://pull.artifacts.ni.com/artifactory" \
@@ -72,15 +57,13 @@ jobs:
             --password="${{ secrets.JFROG_PASSWORD }}" \
             --enc-password=false \
             --basic-auth-only
-
           jf c use artifactory-server
 
-      - name: Download .nupkg from Artifactory using JFrog CLI
+      - name: Download .nupkg from Artifactory
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          FILE="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
-          jf rt download "rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILE" "$FILE" --server-id-resolve=artifactory-server
-
+          FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
+          jf rt dl "rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME" "$FILENAME"
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
@@ -88,7 +71,6 @@ jobs:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: |
-            **Release Notes:**
             ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
