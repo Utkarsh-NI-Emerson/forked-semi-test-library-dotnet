@@ -24,8 +24,7 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
-
-          FIRST_VERSION=$(grep -Po '^- \[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
 
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
@@ -33,9 +32,9 @@ jobs:
           fi
 
           awk -v ver="$VERSION" '
-            $0 ~ "^##[[:space:]]+" ver " -" { in_section=1; next }
+            $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
-              if ($0 ~ "^##[[:space:]]+") exit
+              if ($0 ~ "^[[:space:]]*##[[:space:]]+") exit
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
@@ -44,26 +43,48 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Setup JFrog CLI
-        uses: jfrog/setup-jfrog-cli@v3
-        with:
-          version: 2.53.2
-
-      - name: Configure JFrog CLI with Basic Auth
+      - name: Create Git Tag if not exists
         run: |
-          jf c add artifactory-server \
-            --url=https://pull.artifacts.ni.com/artifactory \
-            --user=utkarsh.saxena@emerson.com \
-            --password=${{ secrets.JFROG_PASSWORD }} \
-            --enc-password=false \
-            --basic-auth-only
-          jf c use artifactory-server
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v$VERSION"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Skipping."
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Install NuGet CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nuget
+
+      - name: Configure NuGet Source for Artifactory
+        run: |
+          nuget sources Add \
+            -Name Artifactory \
+            -Source "https://pull.artifacts.ni.com/artifactory/api/nuget/v3/rnd-nuget-ci-niartifacts/index.json" \
+            -Username "${{ secrets.JFROG_USERNAME }}" \
+            -Password "${{ secrets.JFROG_NUGET_PASSWORD }}"
+          
+          nuget setapikey "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_NUGET_PASSWORD }}" -Source Artifactory
 
       - name: Download .nupkg from Artifactory
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
-          jf rt dl "rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME" "$FILENAME"
+          PACKAGE="NationalInstruments.SemiconductorTestLibrary"
+          PACKAGE_ID="$PACKAGE.$VERSION.nupkg"
+
+          mkdir -p downloaded_package
+          cd downloaded_package
+          nuget install $PACKAGE -Version $VERSION -Source Artifactory -OutputDirectory . -Verbosity detailed
+
+          # Move the .nupkg to root
+          find . -name "*.nupkg" -exec mv {} ../ \;
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
