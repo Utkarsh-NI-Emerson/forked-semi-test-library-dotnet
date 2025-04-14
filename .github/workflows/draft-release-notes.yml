@@ -57,34 +57,30 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Setup JFrog CLI
-        uses: JFrog/setup-jfrog-cli@v1
+      - name: Set up JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v1
         with:
-          version: '2.74.1'
+          version: 2.52.0  # use a stable known-good version
         env:
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+          JFROG_CLI_OFFER_CONFIG: false
 
-      - name: Configure JFrog CLI with workaround
+      - name: Configure JFrog CLI for Basic Auth
         run: |
-          jfrog config add ni-artifactory \
-            --artifactory-url="https://pull.artifacts.ni.com/artifactory" \
-            --user=utkarsh.saxena@emerson.com \
-            --password=${{ secrets.JFROG_PASSWORD }} \
+          jf c add artifactory-server \
+            --url="https://pull.artifacts.ni.com/artifactory" \
+            --user="${{ secrets.JFROG_USERNAME }}" \
+            --password="${{ secrets.JFROG_PASSWORD }}" \
             --enc-password=false \
-            --basic-auth-only \
-            --interactive=false
+            --basic-auth-only
 
-      - name: Download .nupkg using JFrog CLI
+          jf c use artifactory-server
+
+      - name: Download .nupkg from Artifactory using JFrog CLI
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
-          ARTIFACTORY_PATH="rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME"
-          echo "Downloading artifact from $ARTIFACTORY_PATH"
-          jfrog rt dl "$ARTIFACTORY_PATH" --flat=true
-        env:
-          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
-          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+          FILE="NationalInstruments.SemiconductorTestLibrary.${VERSION}.nupkg"
+          jf rt download "rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILE" "$FILE" --server-id-resolve=artifactory-server
+
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
