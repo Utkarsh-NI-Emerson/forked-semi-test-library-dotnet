@@ -14,7 +14,6 @@ permissions:
 jobs:
   create-draft-release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -26,7 +25,6 @@ jobs:
           TAG="v$VERSION"
 
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
-
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
@@ -59,17 +57,34 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Download .nupkg using curl
+      - name: Setup JFrog CLI
+        uses: JFrog/setup-jfrog-cli@v1
+        with:
+          version: 'latest'
+        env:
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+
+      - name: Configure JFrog CLI with workaround
+        run: |
+          jfrog config add myartifactory \
+            --artifactory-url="https://pull.artifacts.ni.com/artifactory" \
+            --user="${{ secrets.JFROG_USERNAME }}" \
+            --password="${{ secrets.JFROG_PASSWORD }}" \
+            --enc-password=false \
+            --basic-auth-only \
+            --interactive=false
+
+      - name: Download .nupkg using JFrog CLI
         run: |
           VERSION="${{ github.event.inputs.version }}"
           FILENAME="NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg"
-          URL="https://pull.artifacts.ni.com/artifactory/rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME"
-
-          echo "Downloading from $URL"
-
-          curl --fail --location "$URL" \
-          --output "$FILENAME" \
-          --user "utkarsh.saxena%40emerson.com:${{ secrets.JFROG_PASSWORD }}"
+          ARTIFACTORY_PATH="rnd-nuget-ci/NationalInstruments.SemiconductorTestLibrary/$FILENAME"
+          echo "Downloading artifact from $ARTIFACTORY_PATH"
+          jfrog rt dl "$ARTIFACTORY_PATH" --flat=true
+        env:
+          JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
