@@ -65,13 +65,13 @@ jobs:
 
       - name: Configure NuGet Source for Artifactory
         run: |
-          nuget sources Add \
+          dotnet nuget sources Add \
             -Name Artifactory \
             -Source "https://pull.artifacts.ni.com/artifactory/api/nuget/v3/rnd-nuget-ci-niartifacts/index.json" \
             -Username "${{ secrets.JFROG_USERNAME }}" \
             -Password "${{ secrets.JFROG_NUGET_PASSWORD }}"
           
-          nuget setapikey "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_NUGET_PASSWORD }}" -Source Artifactory
+          dotnet nuget setapikey "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_NUGET_PASSWORD }}" -Source Artifactory
 
       - name: Download .nupkg from Artifactory
         run: |
@@ -81,7 +81,7 @@ jobs:
 
           mkdir -p downloaded_package
           cd downloaded_package
-          nuget install $PACKAGE -Version $VERSION -Source Artifactory -OutputDirectory . -Verbosity detailed
+          dotnet nuget install $PACKAGE -Version $VERSION -Source Artifactory -OutputDirectory . -Verbosity detailed
 
           # Move the .nupkg to root
           find . -name "*.nupkg" -exec mv {} ../ \;
