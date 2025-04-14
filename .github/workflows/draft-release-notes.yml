@@ -60,7 +60,7 @@ jobs:
       - name: Setup JFrog CLI
         uses: JFrog/setup-jfrog-cli@v1
         with:
-          version: '2.38.0'
+          version: '2.74.1'
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
@@ -69,7 +69,7 @@ jobs:
         run: |
           jfrog config add myartifactory \
             --artifactory-url="https://pull.artifacts.ni.com/artifactory" \
-            --user="${{ secrets.JFROG_USERNAME }}" \
+            --user='utkarsh.saxena@emerson.com' \
             --password="${{ secrets.JFROG_PASSWORD }}" \
             --enc-password=false \
             --basic-auth-only \
