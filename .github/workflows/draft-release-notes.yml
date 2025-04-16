@@ -24,13 +24,13 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
-          
+
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
-          
+
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
@@ -38,7 +38,7 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
-          
+
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -48,7 +48,7 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           echo "TAG=$TAG" >> $GITHUB_ENV
-          
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping."
           else
@@ -57,104 +57,87 @@ jobs:
             git tag "$TAG"
             git push origin "$TAG"
           fi
-      
-      # Hard-coded the Org, Project, and Pipeline Id for now
-      # Change the secret-name from AZDO_PAT to AZURE_DEVOPS_TOKEN (Didn't keep it similar for now might hinder with other automation)
-      - name: Trigger Azure Pipeline to Download .nupkg
+
+      - name: Trigger Azure DevOps Pipeline
         id: trigger_pipeline
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          AZDO_ORG="ni"
-          AZDO_PROJECT="DevCentral"
+          ORG="ni"
+          PROJECT="DevCentral"
           PIPELINE_ID="${{ secrets.AZDO_PIPELINE_ID }}"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          
-          # Create payload (adjust parameter names to match your AzDO pipeline)
-          PAYLOAD=$(cat <<EOF
-          {
-            "templateParameters": {
-              "version": "$VERSION",
-              "packageName": "NationalInstruments.SemiconductorTestLibrary"
+
+          BODY=$(jq -n --arg v "$VERSION" '{
+            templateParameters: {
+              version: $v
             }
-          }
-          EOF
-          )
-          echo "Triggering Azure Pipeline for version $VERSION..."
+          }')
+
           RESPONSE=$(curl -sS -X POST \
-            -u ":${PAT}" \
+            -u ":$PAT" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/pipelines/${PIPELINE_ID}/runs?api-version=7.0")
-          
+            -d "$BODY" \
+            "https://dev.azure.com/$ORG/$PROJECT/_apis/pipelines/$PIPELINE_ID/runs?api-version=7.0")
+
           BUILD_ID=$(echo "$RESPONSE" | jq -r '.id')
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
-            echo "Failed to trigger Azure Pipeline. Response: $RESPONSE"
+            echo "Failed to trigger AzDO pipeline"
+            echo "$RESPONSE"
             exit 1
           fi
-          echo "Triggered build ID: $BUILD_ID"
-          echo "::set-output name=build_id::$BUILD_ID"
 
-      - name: Wait for Azure Pipeline Completion
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for Pipeline to Complete
         id: wait_pipeline
         run: |
           BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
-          AZDO_ORG="ni"
-          AZDO_PROJECT="DevCentral"
+          ORG="ni"
+          PROJECT="DevCentral"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          
-          echo "Waiting for build $BUILD_ID to complete..."
           STATUS="inProgress"
+
           while [ "$STATUS" = "inProgress" ] || [ "$STATUS" = "notStarted" ]; do
             sleep 15
-            RESPONSE=$(curl -sS -X GET -u ":${PAT}" \
-              "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/build/builds/${BUILD_ID}?api-version=6.0")
+            RESPONSE=$(curl -sS -u ":$PAT" \
+              "https://dev.azure.com/$ORG/$PROJECT/_apis/build/builds/$BUILD_ID?api-version=6.0")
             STATUS=$(echo "$RESPONSE" | jq -r '.status')
             echo "Current build status: $STATUS"
           done
 
           RESULT=$(echo "$RESPONSE" | jq -r '.result')
-          echo "Build finished with result: $RESULT"
+          echo "Build result: $RESULT"
           if [ "$RESULT" != "succeeded" ]; then
-            echo "Build did not succeed. Exiting."
             exit 1
           fi
 
-      - name: Download Artifact from Azure DevOps
-        id: download_artifact
+      - name: Download Artifact
         run: |
           BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
-          AZDO_ORG="ni"
-          AZDO_PROJECT="DevCentral"
+          ORG="ni"
+          PROJECT="DevCentral"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
           ARTIFACT_NAME="nupkg-download"
-          
-          echo "Getting artifact download URL from build $BUILD_ID..."
-          ARTIFACT_INFO=$(curl -sS -X GET -u ":${PAT}" \
-            "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/build/builds/${BUILD_ID}/artifacts?api-version=6.0")
-          
-          DOWNLOAD_URL=$(echo "$ARTIFACT_INFO" | jq -r '.value[] | select(.name=="'"${ARTIFACT_NAME}"'") | .resource.downloadUrl')
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            echo "Failed to obtain artifact download URL."
-            echo "$ARTIFACT_INFO"
+
+          ARTIFACT_URL=$(curl -sS -u ":$PAT" \
+            "https://dev.azure.com/$ORG/$PROJECT/_apis/build/builds/$BUILD_ID/artifacts?api-version=6.0" |
+            jq -r ".value[] | select(.name==\"$ARTIFACT_NAME\") | .resource.downloadUrl")
+
+          if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
+            echo "Failed to get artifact download URL"
             exit 1
           fi
-          
-          echo "Artifact download URL: $DOWNLOAD_URL"
-          # Download the artifact (a zip file), then extract it
-          curl -sS -L -u ":${PAT}" "$DOWNLOAD_URL" -o artifact.zip
-          unzip artifact.zip
-          # Move the .nupkg file from the extracted structure to the workspace root
-          find . -maxdepth 2 -name "*.nupkg" -exec mv {} ../ \;
-        env:
-          PATH: ${{ runner.tool_cache }}/unzip/bin:$PATH
 
-      - name: Create Draft Release and Attach Asset
+          curl -sS -L -u ":$PAT" "$ARTIFACT_URL" -o artifact.zip
+          unzip artifact.zip
+          find . -name '*.nupkg' -exec mv {} . \;
+
+      - name: Create Draft GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
-          body: |
-            ${{ steps.extract_changelog.outputs.changelog_section }}
+          body: ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
             NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
