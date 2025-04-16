@@ -24,13 +24,13 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
+          
           FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
-
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
-
+          
           awk -v ver="$VERSION" '
             $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
             in_section {
@@ -38,7 +38,7 @@ jobs:
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
-
+          
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -48,7 +48,7 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           echo "TAG=$TAG" >> $GITHUB_ENV
-
+          
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Skipping."
           else
@@ -57,34 +57,96 @@ jobs:
             git tag "$TAG"
             git push origin "$TAG"
           fi
-
-      - name: Set up .NET SDK (includes NuGet CLI)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.x'
-
-      - name: Configure NuGet Source for Artifactory
-        run: |
-          dotnet nuget sources Add \
-            -Name Artifactory \
-            -Source "https://pull.artifacts.ni.com/artifactory/api/nuget/v3/rnd-nuget-ci-niartifacts/index.json" \
-            -Username "${{ secrets.JFROG_USERNAME }}" \
-            -Password "${{ secrets.JFROG_NUGET_PASSWORD }}"
-          
-          dotnet nuget setapikey "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_NUGET_PASSWORD }}" -Source Artifactory
-
-      - name: Download .nupkg from Artifactory
+      
+      # Hard-coded the Org, Project, and Pipeline Id for now
+      # Change the secret-name from AZDO_PAT to AZURE_DEVOPS_TOKEN (Didn't keep it similar for now might hinder with other automation)
+      - name: Trigger Azure Pipeline to Download .nupkg
+        id: trigger_pipeline
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          PACKAGE="NationalInstruments.SemiconductorTestLibrary"
-          PACKAGE_ID="$PACKAGE.$VERSION.nupkg"
+          AZDO_ORG="ni"
+          AZDO_PROJECT="DevCentral"
+          PIPELINE_ID="${{ secrets.AZDO_PIPELINE_ID }}"
+          PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+          
+          # Create payload (adjust parameter names to match your AzDO pipeline)
+          PAYLOAD=$(cat <<EOF
+          {
+            "templateParameters": {
+              "version": "$VERSION",
+              "packageName": "NationalInstruments.SemiconductorTestLibrary"
+            }
+          }
+          EOF
+          )
+          echo "Triggering Azure Pipeline for version $VERSION..."
+          RESPONSE=$(curl -sS -X POST \
+            -u ":${PAT}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/pipelines/${PIPELINE_ID}/runs?api-version=7.0")
+          
+          BUILD_ID=$(echo "$RESPONSE" | jq -r '.id')
+          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
+            echo "Failed to trigger Azure Pipeline. Response: $RESPONSE"
+            exit 1
+          fi
+          echo "Triggered build ID: $BUILD_ID"
+          echo "::set-output name=build_id::$BUILD_ID"
 
-          mkdir -p downloaded_package
-          cd downloaded_package
-          dotnet nuget install $PACKAGE -Version $VERSION -Source Artifactory -OutputDirectory . -Verbosity detailed
+      - name: Wait for Azure Pipeline Completion
+        id: wait_pipeline
+        run: |
+          BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
+          AZDO_ORG="ni"
+          AZDO_PROJECT="DevCentral"
+          PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+          
+          echo "Waiting for build $BUILD_ID to complete..."
+          STATUS="inProgress"
+          while [ "$STATUS" = "inProgress" ] || [ "$STATUS" = "notStarted" ]; do
+            sleep 15
+            RESPONSE=$(curl -sS -X GET -u ":${PAT}" \
+              "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/build/builds/${BUILD_ID}?api-version=6.0")
+            STATUS=$(echo "$RESPONSE" | jq -r '.status')
+            echo "Current build status: $STATUS"
+          done
 
-          # Move the .nupkg to root
-          find . -name "*.nupkg" -exec mv {} ../ \;
+          RESULT=$(echo "$RESPONSE" | jq -r '.result')
+          echo "Build finished with result: $RESULT"
+          if [ "$RESULT" != "succeeded" ]; then
+            echo "Build did not succeed. Exiting."
+            exit 1
+          fi
+
+      - name: Download Artifact from Azure DevOps
+        id: download_artifact
+        run: |
+          BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
+          AZDO_ORG="ni"
+          AZDO_PROJECT="DevCentral"
+          PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+          ARTIFACT_NAME="nupkg-download"
+          
+          echo "Getting artifact download URL from build $BUILD_ID..."
+          ARTIFACT_INFO=$(curl -sS -X GET -u ":${PAT}" \
+            "https://dev.azure.com/${AZDO_ORG}/${AZDO_PROJECT}/_apis/build/builds/${BUILD_ID}/artifacts?api-version=6.0")
+          
+          DOWNLOAD_URL=$(echo "$ARTIFACT_INFO" | jq -r '.value[] | select(.name=="'"${ARTIFACT_NAME}"'") | .resource.downloadUrl')
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "Failed to obtain artifact download URL."
+            echo "$ARTIFACT_INFO"
+            exit 1
+          fi
+          
+          echo "Artifact download URL: $DOWNLOAD_URL"
+          # Download the artifact (a zip file), then extract it
+          curl -sS -L -u ":${PAT}" "$DOWNLOAD_URL" -o artifact.zip
+          unzip artifact.zip
+          # Move the .nupkg file from the extracted structure to the workspace root
+          find . -maxdepth 2 -name "*.nupkg" -exec mv {} ../ \;
+        env:
+          PATH: ${{ runner.tool_cache }}/unzip/bin:$PATH
 
       - name: Create Draft Release and Attach Asset
         uses: softprops/action-gh-release@v1
