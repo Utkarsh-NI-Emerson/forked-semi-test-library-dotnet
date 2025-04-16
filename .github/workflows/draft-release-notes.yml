@@ -65,13 +65,26 @@ jobs:
           ORG="ni"
           PROJECT="DevCentral"
           PIPELINE_ID="${{ secrets.AZDO_PIPELINE_ID }}"
+          BRANCH="users/usaxena/test-jfrog-nupkg-download"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
 
-          BODY=$(jq -n --arg v "$VERSION" '{
-            templateParameters: {
-              version: $v
-            }
-          }')
+          BODY=$(jq -n \
+            --arg v "$VERSION" \
+            --arg s "refs/heads/$BRANCH" \
+            '{
+              resources: {
+                repositories: {
+                  self: {
+                    refName: $s
+                  }
+                }
+              },
+              templateParameters: {
+                version: $v
+              }
+            }')
+
+          echo "Triggering pipeline on branch: $BRANCH"
 
           RESPONSE=$(curl -sS -X POST \
             -u ":$PAT" \
@@ -79,10 +92,10 @@ jobs:
             -d "$BODY" \
             "https://dev.azure.com/$ORG/$PROJECT/_apis/pipelines/$PIPELINE_ID/runs?api-version=7.0")
 
+          echo "Response: $RESPONSE"
           BUILD_ID=$(echo "$RESPONSE" | jq -r '.id')
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
             echo "Failed to trigger AzDO pipeline"
-            echo "$RESPONSE"
             exit 1
           fi
 
