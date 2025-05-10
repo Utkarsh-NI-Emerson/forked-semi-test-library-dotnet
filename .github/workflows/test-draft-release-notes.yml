@@ -1,4 +1,4 @@
-name: Create Draft Release Minimal
+name: [TEST] Create Draft Release Minimal
 
 on:
   workflow_dispatch:
