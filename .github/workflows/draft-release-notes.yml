@@ -42,7 +42,8 @@ jobs:
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-
+      
+      # If 'Tag' already exist, then this won't fail workflow, ask if we want it to fail    
       - name: Create Git Tag if not exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
@@ -58,6 +59,21 @@ jobs:
             git push origin "$TAG"
           fi
 
+      # If 'Branch' already exist, then this won't fail workflow, ask if we want it to fail    
+      - name: Create Branch from Tag if not exists
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TAG="v$VERSION"
+          BRANCH="releases/$VERSION"
+          if git ls-remote --exit-code --heads origin "$BRANCH"; then
+            echo "Branch $BRANCH already exists. Skipping branch creation."
+          else
+            git fetch origin "$TAG"
+            git checkout -b "$BRANCH" "$TAG"
+            git push origin "$BRANCH"
+          fi          
+
+      # Check branch 
       - name: Trigger Azure DevOps Pipeline
         id: trigger_pipeline
         run: |
