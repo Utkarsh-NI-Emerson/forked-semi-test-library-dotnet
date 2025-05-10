@@ -1,4 +1,4 @@
-name: TEST Create Draft Release Minimal
+name: Create Draft Release
 
 on:
   workflow_dispatch:
@@ -12,10 +12,11 @@ permissions:
   contents: write
 
 jobs:
-  release-steps:
+  create-draft-release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
       - name: Validate and Extract Changelog
@@ -42,34 +43,37 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Git Tag if not exists
+      - name: Create Git Tag (fail if exists)
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           echo "TAG=$TAG" >> $GITHUB_ENV
 
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping tag creation."
-          else
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG"; then
+            echo "::error ::Tag '$TAG' already exists. Failing workflow."
+            exit 1
           fi
 
-      - name: Create Branch from Tag if not exists
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create Release Branch (fail if exists)
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          TAG="v$VERSION"
           BRANCH="releases/$VERSION"
 
-          if git ls-remote --exit-code --heads origin "$BRANCH"; then
-            echo "Branch $BRANCH already exists. Skipping branch creation."
-          else
-            git fetch origin "$TAG"
-            git checkout -b "$BRANCH" "$TAG"
-            git push origin "$BRANCH"
+          if git ls-remote --heads origin "$BRANCH" | grep -q "refs/heads/$BRANCH"; then
+            echo "::error ::Branch '$BRANCH' already exists. Failing workflow."
+            exit 1
           fi
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git switch -c "$BRANCH"
+          git push origin "$BRANCH"
 
       - name: Create Draft GitHub Release
         uses: softprops/action-gh-release@v1
@@ -78,6 +82,5 @@ jobs:
           name: v${{ github.event.inputs.version }}
           body: ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
-          target_commitish: releases/${{ github.event.inputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
