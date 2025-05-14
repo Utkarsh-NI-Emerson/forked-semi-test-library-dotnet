@@ -19,22 +19,25 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      # Validate CHANGELOG.md and extract changelog section for the given version
       - name: Validate and Extract Changelog
         id: extract_changelog
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
-          FIRST_VERSION=$(grep -Po '^\s*-\s*\[\s*\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
+          # Ensure the latest version in CHANGELOG matches the input version
+          FIRST_VERSION=$(grep -Po '^- \[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
 
+          # Extract changelog for the input version
           awk -v ver="$VERSION" '
-            $0 ~ "^[[:space:]]*##[[:space:]]+" ver " -" { in_section=1; next }
+            $0 ~ "^## " ver " -" { in_section=1; next }
             in_section {
-              if ($0 ~ "^[[:space:]]*##[[:space:]]+") exit
+              if ($0 ~ "^## ") exit
               print
             }
           ' CHANGELOG.md > latest_changelog.txt
@@ -42,16 +45,16 @@ jobs:
           echo "changelog_section<<EOF" >> $GITHUB_OUTPUT
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      
-      # If 'Tag' already exist, then this won't fail workflow, ask if we want it to fail    
-      - name: Create Git Tag if not exists
+
+      # Create git tag if it doesn't already exist
+      - name: Create Git Tag if Not Exists
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           echo "TAG=$TAG" >> $GITHUB_ENV
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists. Skipping."
+            echo "Tag $TAG already exists. Reusing existing tag."
           else
             git config user.name "github-actions"
             git config user.email "github-actions@github.com"
@@ -59,21 +62,23 @@ jobs:
             git push origin "$TAG"
           fi
 
-      # If 'Branch' already exist, then this won't fail workflow, ask if we want it to fail    
-      - name: Create Branch from Tag if not exists
+      # Create release branch from tag; fail if branch already exists
+      - name: Create Release Branch from Tag (Fail if Already Exists)
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           BRANCH="releases/$VERSION"
-          if git ls-remote --exit-code --heads origin "$BRANCH"; then
-            echo "Branch $BRANCH already exists. Skipping branch creation."
-          else
-            git fetch origin "$TAG"
-            git checkout -b "$BRANCH" "$TAG"
-            git push origin "$BRANCH"
-          fi          
 
-      # Check branch 
+          if git ls-remote --exit-code --heads origin "$BRANCH"; then
+            echo "::error ::Branch $BRANCH already exists. Failing workflow."
+            exit 1
+          fi
+
+          git fetch origin "refs/tags/$TAG"
+          git checkout -b "$BRANCH" "tags/$TAG"
+          git push origin "$BRANCH"
+
+      # Trigger Azure DevOps pipeline
       - name: Trigger Azure DevOps Pipeline
         id: trigger_pipeline
         run: |
@@ -100,8 +105,6 @@ jobs:
               }
             }')
 
-          echo "Triggering pipeline on branch: $BRANCH"
-
           RESPONSE=$(curl -sS -X POST \
             -u ":$PAT" \
             -H "Content-Type: application/json" \
@@ -110,13 +113,15 @@ jobs:
 
           echo "Response: $RESPONSE"
           BUILD_ID=$(echo "$RESPONSE" | jq -r '.id')
+
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
-            echo "Failed to trigger AzDO pipeline"
+            echo "Failed to trigger Azure DevOps pipeline"
             exit 1
           fi
 
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
 
+      # Wait for AzDO pipeline to finish
       - name: Wait for Pipeline to Complete
         id: wait_pipeline
         run: |
@@ -140,6 +145,7 @@ jobs:
             exit 1
           fi
 
+      # Download nupkg artifact from pipeline
       - name: Download Artifact
         run: |
           BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
@@ -157,10 +163,11 @@ jobs:
             exit 1
           fi
 
-          curl -sS -L -u ":$PAT" "$ARTIFACT_URL" -o artifact.zip
+          curl -sSL -u ":$PAT" "$ARTIFACT_URL" -o artifact.zip
           unzip artifact.zip
           find . -name '*.nupkg' -exec mv {} . \;
 
+      # Create draft GitHub release with nupkg attached
       - name: Create Draft GitHub Release
         uses: softprops/action-gh-release@v1
         with:
