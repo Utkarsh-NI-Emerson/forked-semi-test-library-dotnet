@@ -149,7 +149,7 @@ jobs:
         run: |
           set -e
           VERSION="${{ github.event.inputs.version }}"
-          ARTIFACT_NAME="nupkg-download"
+          ARTIFACT_NAME="jfrog-artifacts"
           BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
           ORG="ni"
           PROJECT="DevCentral"
