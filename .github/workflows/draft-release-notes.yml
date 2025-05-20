@@ -1,4 +1,4 @@
-name: Create Draft Release
+name: Create Release Notes Draft
 
 on:
   workflow_dispatch:
@@ -26,14 +26,12 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
 
-          # Ensure the latest version in CHANGELOG matches the input version
           FIRST_VERSION=$(grep -Po '^- \[\K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1)
           if [ "$FIRST_VERSION" != "$VERSION" ]; then
             echo "::error ::CHANGELOG.md's latest version '$FIRST_VERSION' does not match input version '$VERSION'"
             exit 1
           fi
 
-          # Extract changelog for the input version
           awk -v ver="$VERSION" '
             $0 ~ "^## " ver " -" { in_section=1; next }
             in_section {
@@ -46,8 +44,8 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # Create git tag if it doesn't already exist
-      - name: Create Git Tag if Not Exists
+      # Create git tag if not already present
+      - name: Create Git Tag
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
@@ -62,8 +60,8 @@ jobs:
             git push origin "$TAG"
           fi
 
-      # Create release branch from tag; fail if branch already exists
-      - name: Create Release Branch from Tag (Fail if Already Exists)
+      # Create release branch from tag (fail if branch already exists)
+      - name: Create Release Branch from Tag
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
@@ -78,7 +76,8 @@ jobs:
           git checkout -b "$BRANCH" "tags/$TAG"
           git push origin "$BRANCH"
 
-      # Trigger Azure DevOps pipeline
+      # Trigger Azure DevOps Pipeline
+      # Change branch name before PR
       - name: Trigger Azure DevOps Pipeline
         id: trigger_pipeline
         run: |
@@ -86,7 +85,7 @@ jobs:
           ORG="ni"
           PROJECT="DevCentral"
           PIPELINE_ID="${{ secrets.AZDO_PIPELINE_ID }}"
-          BRANCH="users/usaxena/test-jfrog-nupkg-download"
+          BRANCH="users/usaxena/release-notes-automation"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
 
           BODY=$(jq -n \
@@ -121,7 +120,7 @@ jobs:
 
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
 
-      # Wait for AzDO pipeline to finish
+      # Wait for pipeline to complete
       - name: Wait for Pipeline to Complete
         id: wait_pipeline
         run: |
@@ -145,30 +144,32 @@ jobs:
             exit 1
           fi
 
-      # Download nupkg artifact from pipeline
-      - name: Download Artifact
+      # Download NuPkg and Assemblies.zip from Azure DevOps pipeline artifacts
+      - name: Download Artifacts from Azure DevOps
         run: |
+          set -e
+          VERSION="${{ github.event.inputs.version }}"
+          ARTIFACT_NAME="nupkg-download"
           BUILD_ID="${{ steps.trigger_pipeline.outputs.build_id }}"
           ORG="ni"
           PROJECT="DevCentral"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
-          ARTIFACT_NAME="nupkg-download"
 
+          # Get the download URL for the artifact
           ARTIFACT_URL=$(curl -sS -u ":$PAT" \
             "https://dev.azure.com/$ORG/$PROJECT/_apis/build/builds/$BUILD_ID/artifacts?api-version=6.0" |
             jq -r ".value[] | select(.name==\"$ARTIFACT_NAME\") | .resource.downloadUrl")
 
-          if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
-            echo "Failed to get artifact download URL"
-            exit 1
-          fi
-
+          # Download and unzip the artifact
           curl -sSL -u ":$PAT" "$ARTIFACT_URL" -o artifact.zip
-          unzip artifact.zip
-          find . -name '*.nupkg' -exec mv {} . \;
+          unzip -q artifact.zip
 
-      # Create draft GitHub release with nupkg attached
-      - name: Create Draft GitHub Release
+          # Move the expected files to the current directory (they are in flat layout already)
+          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
+          mv jfrog-artifacts/SemiconductorTestLibrary.$VERSION.Assemblies.zip .
+
+      # Create Release Notes Draft
+      - name: Create Release Notes Draft
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.version }}
@@ -177,5 +178,6 @@ jobs:
           draft: true
           files: |
             NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
+            SemiconductorTestLibrary.${{ github.event.inputs.version }}.Assemblies.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
