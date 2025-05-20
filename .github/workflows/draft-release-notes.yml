@@ -145,6 +145,7 @@ jobs:
           fi
 
       # Download NuPkg and Assemblies.zip from Azure DevOps pipeline artifacts
+      # Change Hardcoded version in line 169-170
       - name: Download Artifacts from Azure DevOps
         run: |
           set -e
@@ -165,7 +166,8 @@ jobs:
           unzip -q artifact.zip
 
           # Move the expected files to the current directory (they are in flat layout already)
-          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
+          # mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
+          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg .
           mv jfrog-artifacts/SemiconductorTestLibrary.$VERSION.Assemblies.zip .
 
       # Create Release Notes Draft
