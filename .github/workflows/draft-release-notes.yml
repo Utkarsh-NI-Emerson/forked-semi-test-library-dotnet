@@ -171,6 +171,7 @@ jobs:
           mv jfrog-artifacts/SemiconductorTestLibrary.$VERSION.Assemblies.zip .
 
       # Create Release Notes Draft
+      # Change Hardcoded version number
       - name: Create Release Notes Draft
         uses: softprops/action-gh-release@v1
         with:
@@ -179,7 +180,8 @@ jobs:
           body: ${{ steps.extract_changelog.outputs.changelog_section }}
           draft: true
           files: |
-            NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
+            # NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
+            NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
             SemiconductorTestLibrary.${{ github.event.inputs.version }}.Assemblies.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
