@@ -140,8 +140,8 @@ jobs:
       - name: Notify NI Developers on Teams
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ toJson(github.event.issue.title) }}
+          ISSUE_BODY: ${{ toJson(github.event.issue.body) }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           WORK_ITEM_ID: ${{ steps.create-work-item.outputs.work_item_id }}
