@@ -154,6 +154,7 @@ jobs:
           echo "Formatting issue body for Teams..."
           FORMATTED_ISSUE_BODY=$(echo "$ISSUE_BODY" \
             | sed -E 's/\*\*([^*]+)\*\*/<strong>\1<\/strong>/g' \
+            | sed -E 's|!\[([^\]]*)\]\(([^)]+)\)|<img src="\2" alt="\1" style="max-width:400px;" />|g' \
             | sed ':a;N;$!ba;s/\n/<br>/g')
 
           echo "Generating JSON payload with jq"
