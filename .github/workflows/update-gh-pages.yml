@@ -1,0 +1,92 @@
+name: Trigger DocFX Release Flow
+
+on:
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        type: choice
+        description: "Run in dry run mode?"
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  trigger-docfx:
+    runs-on: ubuntu-latest
+    env:
+      AZDO_ORG: your_org_here
+      AZDO_PROJECT: your_project_here
+      AZDO_PIPELINE_ID: your_pipeline_id_here
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trigger Azure DevOps pipeline
+        id: trigger
+        run: |
+          echo "Triggering Azure DevOps pipeline..."
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs?api-version=7.0")
+
+          echo "$RESPONSE" | jq
+          RUN_ID=$(echo "$RESPONSE" | jq -r '.id')
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for Pipeline Completion
+        id: wait
+        run: |
+          RUN_ID=${{ steps.trigger.outputs.run_id }}
+          STATUS="inProgress"
+          while [[ "$STATUS" == "inProgress" || "$STATUS" == "notStarted" ]]; do
+            echo "Waiting for Azure pipeline run $RUN_ID..."
+            sleep 20
+            RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" \
+              "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID?api-version=7.0")
+            STATUS=$(echo "$RESPONSE" | jq -r '.state')
+            echo "Status: $STATUS"
+          done
+
+      - name: List Artifacts (Dry Run)
+        if: ${{ inputs.dryRun == 'true' }}
+        run: |
+          echo "Listing artifacts for dry run..."
+          RUN_ID=${{ steps.trigger.outputs.run_id }}
+          ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID/artifacts?api-version=7.0"
+          curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | "- \(.name): \(.resource.downloadUrl)"'
+
+      - name: Download docfx-site artifact
+        if: ${{ inputs.dryRun == 'false' }}
+        run: |
+          mkdir site
+          echo "Fetching docfx-site artifact..."
+          ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/${{ steps.trigger.outputs.run_id }}/artifacts?api-version=7.0"
+          URL=$(curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | select(.name == "docfx-site") | .resource.downloadUrl')
+
+          echo "Downloading from $URL"
+          curl -L -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$URL" --output site.zip
+          unzip site.zip -d site
+
+      - name: Sync _site to /docs
+        if: ${{ inputs.dryRun == 'false' }}
+        run: |
+          echo "Syncing site to /docs"
+          rsync -av --delete site/ /docs/
+
+      - name: Commit and Open PR
+        if: ${{ inputs.dryRun == 'false' }}
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: "Update GitHub Pages documentation from docfx-site"
+          branch: update-docfx-site
+          title: "📘 Update documentation from DocFX"
+          body: |
+            This PR updates the `/docs` folder with the latest generated content from the Azure DevOps pipeline.
