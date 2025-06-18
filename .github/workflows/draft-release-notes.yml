@@ -12,8 +12,9 @@ permissions:
   contents: write
 
 jobs:
-  create-draft-release:
+  create-release-notes-draft:
     runs-on: ubuntu-latest
+    environment: gh-action-testing
 
     steps:
       - name: Checkout Repository
@@ -44,7 +45,7 @@ jobs:
           cat latest_changelog.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # Create git tag if not already present
+      # Create git tag if not already present, if present use existing tag
       - name: Create Git Tag
         run: |
           VERSION="${{ github.event.inputs.version }}"
@@ -60,32 +61,32 @@ jobs:
             git push origin "$TAG"
           fi
 
-      # Create release branch from tag (fail if branch already exists)
+      # Create release branch from tag if not already present, if present use existing branch
       - name: Create Release Branch from Tag
         run: |
           VERSION="${{ github.event.inputs.version }}"
           TAG="v$VERSION"
           BRANCH="releases/$VERSION"
-
+      
           if git ls-remote --exit-code --heads origin "$BRANCH"; then
-            echo "::error ::Branch $BRANCH already exists. Failing workflow."
-            exit 1
+            echo "Branch $BRANCH already exists. Reusing existing branch."
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+          else
+            git fetch origin "refs/tags/$TAG"
+            git checkout -b "$BRANCH" "tags/$TAG"
+            git push origin "$BRANCH"
           fi
 
-          git fetch origin "refs/tags/$TAG"
-          git checkout -b "$BRANCH" "tags/$TAG"
-          git push origin "$BRANCH"
-
       # Trigger Azure DevOps Pipeline
-      # Change branch name before PR
       - name: Trigger Azure DevOps Pipeline
         id: trigger_pipeline
         run: |
           VERSION="${{ github.event.inputs.version }}"
           ORG="ni"
           PROJECT="DevCentral"
-          PIPELINE_ID="${{ secrets.AZDO_PIPELINE_ID }}"
-          BRANCH="users/usaxena/release-notes-automation"
+          PIPELINE_ID="27162"
+          BRANCH="users/usaxena/test-jfrog-artifact-download"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
 
           BODY=$(jq -n \
@@ -117,6 +118,9 @@ jobs:
             echo "Failed to trigger Azure DevOps pipeline"
             exit 1
           fi
+          
+          PIPELINE_URL="https://dev.azure.com/$ORG/$PROJECT/_build/results?buildId=$BUILD_ID"
+          echo "Azure DevOps pipeline triggered: $PIPELINE_URL"
 
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
 
@@ -128,14 +132,25 @@ jobs:
           ORG="ni"
           PROJECT="DevCentral"
           PAT="${{ secrets.AZURE_DEVOPS_TOKEN }}"
+
+          TIMEOUT=1200   # 20 minutes
+          INTERVAL=30    # check every 30 seconds
+          ELAPSED=0
           STATUS="inProgress"
 
           while [ "$STATUS" = "inProgress" ] || [ "$STATUS" = "notStarted" ]; do
-            sleep 15
+            if [[ "$ELAPSED" -ge "$TIMEOUT" ]]; then
+              echo "::error ::Timeout reached after 20 minutes while waiting for Azure DevOps pipeline to complete."
+              exit 1
+            fi
+
             RESPONSE=$(curl -sS -u ":$PAT" \
               "https://dev.azure.com/$ORG/$PROJECT/_apis/build/builds/$BUILD_ID?api-version=6.0")
             STATUS=$(echo "$RESPONSE" | jq -r '.status')
             echo "Current build status: $STATUS"
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
           done
 
           RESULT=$(echo "$RESPONSE" | jq -r '.result')
@@ -145,7 +160,6 @@ jobs:
           fi
 
       # Download NuPkg and Assemblies.zip from Azure DevOps pipeline artifacts
-      # Change Hardcoded version in line 169-170
       - name: Download Artifacts from Azure DevOps
         run: |
           set -e
@@ -166,22 +180,20 @@ jobs:
           unzip -q artifact.zip
 
           # Move the expected files to the current directory (they are in flat layout already)
-          # mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
-          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg .
+          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
           mv jfrog-artifacts/SemiconductorTestLibrary.$VERSION.Assemblies.zip .
 
       # Create Release Notes Draft
-      # Change Hardcoded version number
       - name: Create Release Notes Draft
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: v${{ github.event.inputs.version }}
           body: ${{ steps.extract_changelog.outputs.changelog_section }}
+          # Please do not change the 'draft' parameter to 'false', as we only intend to create a draft of the Release Notes
           draft: true
           files: |
-            # NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
-            NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
+            NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
             SemiconductorTestLibrary.${{ github.event.inputs.version }}.Assemblies.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
