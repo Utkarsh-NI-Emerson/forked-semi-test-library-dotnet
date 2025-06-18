@@ -52,6 +52,8 @@ jobs:
           TAG="v$VERSION"
           echo "TAG=$TAG" >> $GITHUB_ENV
 
+          git fetch --tags
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists. Reusing existing tag."
           else
