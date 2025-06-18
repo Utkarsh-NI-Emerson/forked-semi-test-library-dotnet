@@ -180,7 +180,7 @@ jobs:
           unzip -q artifact.zip
 
           # Move the expected files to the current directory (they are in flat layout already)
-          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.$VERSION.nupkg .
+          mv jfrog-artifacts/NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg .
           mv jfrog-artifacts/SemiconductorTestLibrary.$VERSION.Assemblies.zip .
 
       # Create Release Notes Draft
@@ -193,7 +193,7 @@ jobs:
           # Please do not change the 'draft' parameter to 'false', as we only intend to create a draft of the Release Notes
           draft: true
           files: |
-            NationalInstruments.SemiconductorTestLibrary.${{ github.event.inputs.version }}.nupkg
+            NationalInstruments.SemiconductorTestLibrary.25.0.0.nupkg
             SemiconductorTestLibrary.${{ github.event.inputs.version }}.Assemblies.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
