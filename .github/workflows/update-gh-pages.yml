@@ -1,5 +1,6 @@
 name: Trigger DocFX Release Flow
 
+# Do we want to check which branch we run this workflow on ??
 on:
   workflow_dispatch:
     inputs:
@@ -10,83 +11,147 @@ on:
           - 'true'
           - 'false'
         default: 'true'
+      branch:
+        description: "GitHub Branch to use in Azure DevOps Pipeline (default: main)"
+        required: true
+        default: 'main'
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read       # Required to check out the code and access repo files
+  pages: write         # Required to deploy to GitHub Pages (grants access to Pages API)
+  id-token: write      # Required for OIDC authentication with GitHub Pages (used internally by deploy-pages action)
 
 jobs:
   trigger-docfx:
     runs-on: ubuntu-latest
+    ###### Should we use this environment or not?? #####
+    # environment:
+    #   name: github-pages
+    #   url: ${{ steps.deployment.outputs.page_url }}
     env:
-      AZDO_ORG: your_org_here
-      AZDO_PROJECT: your_project_here
-      AZDO_PIPELINE_ID: your_pipeline_id_here
+      AZDO_ORG: ni
+      AZDO_PROJECT: DevCentral
+      AZDO_PIPELINE_ID: 27856 # (inserted manually)
 
     steps:
-      - name: Checkout
+      # Step 1: Checkout the repository code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Asked input for GitHub Branch, but not used it yet have to provide input to Azure Pipeline somehow
+      # Step 2: Trigger the Azure DevOps pipeline
       - name: Trigger Azure DevOps pipeline
         id: trigger
         run: |
+          AZDO_BRANCH="main"
           echo "Triggering Azure DevOps pipeline..."
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" \
+      
+          # NOTE: GitHub input 'branch' is collected but not used yet
+          echo "GitHub branch input (unused for now): ${{ github.event.inputs.branch }}"
+      
+          BODY=$(jq -n \
+            --arg ref "refs/heads/$AZDO_BRANCH" \
+            '{
+              resources: {
+                repositories: {
+                  self: {
+                    refName: $ref
+                  }
+                }
+              }
+            }')
+      
+          RESPONSE=$(curl -sS -X POST \
+            -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{}' \
+            -d "$BODY" \
             "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs?api-version=7.0")
-
+      
+          echo "Azure DevOps Response:"
           echo "$RESPONSE" | jq
+      
           RUN_ID=$(echo "$RESPONSE" | jq -r '.id')
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "Failed to trigger Azure DevOps pipeline"
+            exit 1
+          fi
+      
+          PIPELINE_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_build/results?buildId=$RUN_ID"
+          echo "Azure DevOps pipeline triggered: $PIPELINE_URL"
+      
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
-
+    
+      # Will add some Time-out after checking run times of AzDO Pipeline    
+      # Step 3: Wait until the pipeline run completes
       - name: Wait for Pipeline Completion
         id: wait
         run: |
-          RUN_ID=${{ steps.trigger.outputs.run_id }}
+          RUN_ID="${{ steps.trigger.outputs.run_id }}"
+          TIMEOUT=1200   # 20 minutes
+          INTERVAL=30    # polling every 30 seconds
+          ELAPSED=0
           STATUS="inProgress"
+      
+          echo "Waiting for Azure DevOps pipeline run ID: $RUN_ID"
+      
           while [[ "$STATUS" == "inProgress" || "$STATUS" == "notStarted" ]]; do
-            echo "Waiting for Azure pipeline run $RUN_ID..."
-            sleep 20
-            RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" \
+            if [[ "$ELAPSED" -ge "$TIMEOUT" ]]; then
+              echo "::error ::Timeout reached after 20 minutes while waiting for Azure DevOps pipeline to complete."
+              exit 1
+            fi
+      
+            RESPONSE=$(curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" \
               "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID?api-version=7.0")
+      
             STATUS=$(echo "$RESPONSE" | jq -r '.state')
-            echo "Status: $STATUS"
+            RESULT=$(echo "$RESPONSE" | jq -r '.result')
+      
+            echo "Current state: $STATUS"
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
           done
+      
+          echo "Pipeline completed with result: $RESULT"
+          if [[ "$RESULT" != "succeeded" ]]; then
+            echo "::error ::Azure DevOps pipeline failed with result: $RESULT"
+            exit 1
+          fi
 
+      # Step 4: In dry run mode, list artifact names and download URLs
       - name: List Artifacts (Dry Run)
         if: ${{ inputs.dryRun == 'true' }}
         run: |
           echo "Listing artifacts for dry run..."
           RUN_ID=${{ steps.trigger.outputs.run_id }}
           ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID/artifacts?api-version=7.0"
-          curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | "- \(.name): \(.resource.downloadUrl)"'
+          curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | "- \(.name): \(.resource.downloadUrl)"'
 
+      # Step 5: Download docfx-site artifact if not in dry run
       - name: Download docfx-site artifact
         if: ${{ inputs.dryRun == 'false' }}
         run: |
           mkdir site
           echo "Fetching docfx-site artifact..."
           ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/${{ steps.trigger.outputs.run_id }}/artifacts?api-version=7.0"
-          URL=$(curl -s -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | select(.name == "docfx-site") | .resource.downloadUrl')
+          URL=$(curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | select(.name == "docfx-site") | .resource.downloadUrl')
 
           echo "Downloading from $URL"
-          curl -L -H "Authorization: Bearer ${{ secrets.AZURE_DEVOPS_TOKEN }}" "$URL" --output site.zip
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "Failed to get docfx-site artifact URL"
+            exit 1
+          fi
+          curl -L -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$URL" --output site.zip
           unzip site.zip -d site
 
-      - name: Sync _site to /docs
+      # Step 6: Upload docfx-site artifact for GitHub Pages deployment
+      - name: Upload Pages Artifact
         if: ${{ inputs.dryRun == 'false' }}
-        run: |
-          echo "Syncing site to /docs"
-          rsync -av --delete site/ /docs/
-
-      - name: Commit and Open PR
-        if: ${{ inputs.dryRun == 'false' }}
-        uses: peter-evans/create-pull-request@v5
+        uses: actions/upload-pages-artifact@v3
         with:
-          commit-message: "Update GitHub Pages documentation from docfx-site"
-          branch: update-docfx-site
-          title: "📘 Update documentation from DocFX"
-          body: |
-            This PR updates the `/docs` folder with the latest generated content from the Azure DevOps pipeline.
+          path: 'site'  # This is where we unzipped docfx-site
+
+      # Step 7: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        if: ${{ inputs.dryRun == 'false' }}
+        id: deployment
+        uses: actions/deploy-pages@v4
