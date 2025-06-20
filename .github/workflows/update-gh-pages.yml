@@ -11,10 +11,6 @@ on:
           - 'true'
           - 'false'
         default: 'true'
-      branch:
-        description: "GitHub Branch to use in Azure DevOps Pipeline (default: main)"
-        required: true
-        default: 'main'
 
 permissions:
   contents: read       # Required to check out the code and access repo files
@@ -32,6 +28,7 @@ jobs:
       AZDO_ORG: ni
       AZDO_PROJECT: DevCentral
       AZDO_PIPELINE_ID: 27856 # (inserted manually)
+      GITHUB_BRANCH: "${{ github.ref_name }}"
 
     steps:
       # Step 1: Checkout the repository code
@@ -43,11 +40,12 @@ jobs:
       - name: Trigger Azure DevOps pipeline
         id: trigger
         run: |
+
           AZDO_BRANCH="main"
           echo "Triggering Azure DevOps pipeline..."
       
           # NOTE: GitHub input 'branch' is collected but not used yet
-          echo "GitHub branch input (unused for now): ${{ github.event.inputs.branch }}"
+          echo "GitHub branch input (unused for now): $GITHUB_BRANCH"
       
           BODY=$(jq -n \
             --arg ref "refs/heads/$AZDO_BRANCH" \
