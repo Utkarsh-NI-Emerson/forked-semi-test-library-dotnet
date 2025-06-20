@@ -40,7 +40,6 @@ jobs:
       - name: Trigger Azure DevOps pipeline
         id: trigger
         run: |
-
           AZDO_BRANCH="main"
           echo "Triggering Azure DevOps pipeline..."
       
@@ -79,14 +78,14 @@ jobs:
       
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
     
-      # Will add some Time-out after checking run times of AzDO Pipeline    
+      # Added time-out for 20 minutes for now, can change after checking pipeline runs
       # Step 3: Wait until the pipeline run completes
       - name: Wait for Pipeline Completion
         id: wait
         run: |
           RUN_ID="${{ steps.trigger.outputs.run_id }}"
-          TIMEOUT=1200   # 20 minutes
-          INTERVAL=30    # polling every 30 seconds
+          TIMEOUT=1200   # fail after 20 minutes
+          INTERVAL=30    # checking status every 30 seconds
           ELAPSED=0
           STATUS="inProgress"
       
