@@ -86,8 +86,8 @@ jobs:
         id: wait
         run: |
           RUN_ID="${{ steps.trigger.outputs.run_id }}"
-          TIMEOUT=1200   # fail after 20 minutes
-          INTERVAL=30    # checking status every 30 seconds
+          TIMEOUT=3600   # fail after 1 hour
+          INTERVAL=60    # checking status every 1 minute
           ELAPSED=0
           STATUS="inProgress"
       
@@ -117,14 +117,24 @@ jobs:
           fi
 
       # Step 4: In dry run mode, list artifact names and download URLs
-      - name: List Artifacts (Dry Run)
+      - name: List Artifact Links (Dry Run)
         if: ${{ inputs.dryRun == 'true' }}
         run: |
-          echo "Listing artifacts for dry run..."
+          echo "Listing Azure DevOps artifacts with download links..."
           RUN_ID=${{ steps.trigger.outputs.run_id }}
           ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID/artifacts?api-version=7.0"
-          curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | "- \(.name): \(.resource.downloadUrl)"'
-
+      
+          RESPONSE=$(curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL")
+      
+          echo "### Azure DevOps Artifacts from Run $RUN_ID" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+      
+          echo "$RESPONSE" | jq -r '
+            .value[] |
+            .name as $name |
+            .resource | fromjson | "- [\($name)](\(.downloadUrl))"
+          ' >> $GITHUB_STEP_SUMMARY
+    
       # Step 5: Download docfx-site artifact if not in dry run
       - name: Download docfx-site artifact
         if: ${{ inputs.dryRun == 'false' }}
