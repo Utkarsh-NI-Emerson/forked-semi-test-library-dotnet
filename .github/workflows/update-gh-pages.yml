@@ -20,6 +20,8 @@ permissions:
 jobs:
   trigger-docfx:
     runs-on: ubuntu-latest
+    # environment: gh-action-testing (Un-comment when raising PR)
+
     ###### Should we use this environment or not?? #####
     # environment:
     #   name: github-pages
