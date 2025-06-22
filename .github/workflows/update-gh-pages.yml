@@ -138,9 +138,9 @@ jobs:
           mkdir site         
           RUN_ID="${{ steps.trigger.outputs.run_id }}"
           ARTIFACT_NAME="docfx-site"
-
-          echo "Fetching docfx-site artifact..."  
       
+          echo "Fetching docfx-site artifact..."  
+          
           ARTIFACT_URL=$(curl -sS -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" \
             "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/build/builds/$RUN_ID/artifacts?api-version=6.0" |
             jq -r ".value[] | select(.name==\"$ARTIFACT_NAME\") | .resource.downloadUrl")
@@ -153,7 +153,8 @@ jobs:
           fi
       
           curl -sSL -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACT_URL" -o site.zip
-          unzip -q site.zip -d site 
+          unzip -q site.zip -d temp_site
+          mv temp_site/docfx-site/* site/       
 
       # Step 6: Upload docfx-site artifact for GitHub Pages deployment
       - name: Upload Pages Artifact
