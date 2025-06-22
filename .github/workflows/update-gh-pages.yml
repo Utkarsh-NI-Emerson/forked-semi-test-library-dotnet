@@ -117,23 +117,21 @@ jobs:
           fi
 
       # Step 4: In dry run mode, list artifact names and download URLs
-      - name: List Artifact Links (Dry Run)
+      - name: Output Azure DevOps Artifact Links (Dry Run)
         if: ${{ inputs.dryRun == 'true' }}
         run: |
-          echo "Listing Azure DevOps artifacts with download links..."
-          RUN_ID=${{ steps.trigger.outputs.run_id }}
-          ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID/artifacts?api-version=7.0"
-      
-          RESPONSE=$(curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL")
-      
-          echo "### Azure DevOps Artifacts from Run $RUN_ID" >> $GITHUB_STEP_SUMMARY
+          echo "## Azure DevOps Artifact Links" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
       
-          echo "$RESPONSE" | jq -r '
-            .value[] |
-            .name as $name |
-            .resource | fromjson | "- [\($name)](\(.downloadUrl))"
-          ' >> $GITHUB_STEP_SUMMARY
+          RUN_ID=${{ steps.trigger.outputs.run_id }}
+          BASE_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/$RUN_ID/artifacts?artifactName"
+      
+          echo "- [docfx-site]($BASE_URL=docfx-site)" >> $GITHUB_STEP_SUMMARY
+          echo "- [docfx-metadata]($BASE_URL=docfx-metadata)" >> $GITHUB_STEP_SUMMARY
+      
+          echo "Direct links to artifacts:"
+          echo "$BASE_URL=docfx-site"
+          echo "$BASE_URL=docfx-metadata"
     
       # Step 5: Download docfx-site artifact if not in dry run
       - name: Download docfx-site artifact
