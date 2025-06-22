@@ -134,18 +134,26 @@ jobs:
       - name: Download docfx-site artifact
         if: ${{ inputs.dryRun == 'false' }}
         run: |
-          mkdir site
-          echo "Fetching docfx-site artifact..."
-          ARTIFACTS_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/pipelines/$AZDO_PIPELINE_ID/runs/${{ steps.trigger.outputs.run_id }}/artifacts?api-version=7.0"
-          URL=$(curl -s -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACTS_URL" | jq -r '.value[] | select(.name == "docfx-site") | .resource.downloadUrl')
+          set -e
+          mkdir site         
+          RUN_ID="${{ steps.trigger.outputs.run_id }}"
+          ARTIFACT_NAME="docfx-site"
 
-          echo "Downloading from $URL"
-          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "Failed to get docfx-site artifact URL"
+          echo "Fetching docfx-site artifact..."  
+      
+          ARTIFACT_URL=$(curl -sS -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" \
+            "https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_apis/build/builds/$RUN_ID/artifacts?api-version=6.0" |
+            jq -r ".value[] | select(.name==\"$ARTIFACT_NAME\") | .resource.downloadUrl")
+      
+          echo "Download URL: $ARTIFACT_URL"
+      
+          if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
+            echo "Failed to get $ARTIFACT_NAME artifact URL"
             exit 1
           fi
-          curl -L -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$URL" --output site.zip
-          unzip site.zip -d site
+      
+          curl -sSL -u ":${{ secrets.AZURE_DEVOPS_TOKEN }}" "$ARTIFACT_URL" -o site.zip
+          unzip -q site.zip -d site 
 
       # Step 6: Upload docfx-site artifact for GitHub Pages deployment
       - name: Upload Pages Artifact
