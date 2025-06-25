@@ -1,9 +1,12 @@
-name: Trigger DocFX Release Flow
+name: Update Documentation on GitHub Pages
 
-# Do we want to check which branch we run this workflow on ??
 on:
   workflow_dispatch:
     inputs:
+      azdoBranch:
+        type: string
+        description: "Target branch to use in Azure DevOps repository for building the DocFX documentation (e.g., main, releases/*)"
+        default: "main"
       dryRun:
         type: choice
         description: "Run in dry run mode?"
@@ -18,18 +21,13 @@ permissions:
   id-token: write      # Required for OIDC authentication with GitHub Pages (used internally by deploy-pages action)
 
 jobs:
-  trigger-docfx:
+  update-gitHub-pages-documentation:
     runs-on: ubuntu-latest
-    # environment: gh-action-testing (Un-comment when raising PR)
-
-    ###### Should we use this environment or not?? #####
-    # environment:
-    #   name: github-pages
-    #   url: ${{ steps.deployment.outputs.page_url }}
+    environment: gh-action-testing
     env:
       AZDO_ORG: ni
       AZDO_PROJECT: DevCentral
-      AZDO_PIPELINE_ID: 27856 # (inserted manually)
+      AZDO_PIPELINE_ID: 27856
       GITHUB_BRANCH: "${{ github.ref_name }}"
 
     steps:
@@ -37,19 +35,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Asked input for GitHub Branch, but not used it yet have to provide input to Azure Pipeline somehow
       # Step 2: Trigger the Azure DevOps pipeline
       - name: Trigger Azure DevOps pipeline
         id: trigger
         run: |
-          AZDO_BRANCH="users/usaxena/test-docfx-build" # Change when raising PR
+          AZDO_BRANCH="${{ inputs.azdoBranch }}"
+
           echo "Triggering Azure DevOps pipeline..."
+          echo "GitHub Branch used: $GITHUB_BRANCH"
+          echo "Azure DevOps Branch used: $AZDO_BRANCH"                    
       
-          # NOTE: GitHub input 'branch' is collected but not used yet
-          echo "GitHub branch input (unused for now): $GITHUB_BRANCH"
-      
+          # Passed GitHub Branch as an input to the Azure DevOps pipeline parameter      
           BODY=$(jq -n \
             --arg ref "refs/heads/$AZDO_BRANCH" \
+            --arg ghBranch "$GITHUB_BRANCH" \
             '{
               resources: {
                 repositories: {
@@ -57,6 +56,9 @@ jobs:
                     refName: $ref
                   }
                 }
+              },
+              templateParameters: {
+                githubBranch: $ghBranch
               }
             }')
       
@@ -80,7 +82,6 @@ jobs:
       
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
     
-      # Added time-out for 20 minutes for now, can change after checking pipeline runs
       # Step 3: Wait until the pipeline run completes
       - name: Wait for Pipeline Completion
         id: wait
@@ -95,7 +96,7 @@ jobs:
       
           while [[ "$STATUS" == "inProgress" || "$STATUS" == "notStarted" ]]; do
             if [[ "$ELAPSED" -ge "$TIMEOUT" ]]; then
-              echo "::error ::Timeout reached after 20 minutes while waiting for Azure DevOps pipeline to complete."
+              echo "::error ::Timeout reached after 1 hour while waiting for Azure DevOps pipeline to complete."
               exit 1
             fi
       
@@ -116,9 +117,8 @@ jobs:
             exit 1
           fi
 
-      # Step 4: In dry run mode, list artifact names and download URLs
-      - name: Output Azure DevOps Artifact UI Link (Dry Run)
-        if: ${{ inputs.dryRun == 'true' }}
+      # Step 4: Provide Artifact Link
+      - name: Output Azure DevOps Artifact Link
         run: |
           RUN_ID=${{ steps.trigger.outputs.run_id }}
           ARTIFACT_UI_URL="https://dev.azure.com/$AZDO_ORG/$AZDO_PROJECT/_build/results?buildId=$RUN_ID&view=artifacts"
@@ -161,7 +161,7 @@ jobs:
         if: ${{ inputs.dryRun == 'false' }}
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'site'  # This is where we unzipped docfx-site
+          path: 'site'  # This is where we unzip docfx-site
 
       # Step 7: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
