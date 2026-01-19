@@ -6,6 +6,8 @@ on:
         types:
             - in_progress
 
+    workflow_dispatch: 
+
 run-name: "PR Build for pr-intake #${{ github.event.workflow_run.run_number }}"
 
 env:
