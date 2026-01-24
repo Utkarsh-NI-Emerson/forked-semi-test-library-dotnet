@@ -11,9 +11,9 @@ on:
 run-name: "PR Build for pr-intake #${{ github.event.workflow_run.run_number }}"
 
 env:
-    GITHUB_MixedSignalTestLibrary_REPO_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
-    GITHUB_MixedSignalTestLibrary_REPO_NAME: ${{ github.event.workflow_run.head_repository.name }}
-    GITHUB_MixedSignalTestLibrary_BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+    GITHUB_MixedSignalTestLibrary_REPO_OWNER: "ni"
+    GITHUB_MixedSignalTestLibrary_REPO_NAME: "semi-test-library-dotnet"
+    GITHUB_MixedSignalTestLibrary_BRANCH_NAME: "users/usaxena/remove-dependency-on-yifan-action"
 
 jobs:
     build:   
